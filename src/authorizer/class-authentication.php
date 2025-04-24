@@ -739,6 +739,9 @@ class Authentication extends Singleton {
 			}
 		}
 
+		// Save the OAuth2 token in the session
+		$this->save_oauth2_token($token);
+
 		return array(
 			'email'             => $externally_authenticated_email,
 			'username'          => sanitize_user( $username ),
@@ -748,6 +751,19 @@ class Authentication extends Singleton {
 			'oauth2_provider'   => $auth_settings['oauth2_provider'],
 			'oauth2_attributes' => $attributes,
 		);
+	}
+
+	/**
+	 * Save the OAuth2 token in the session.
+	 *
+	 * @param  string $token OAuth2 token.
+	 * @return void
+	 */
+	protected function save_oauth2_token($token) {
+		if (session_id() === '') {
+			session_start();
+		}
+		$_SESSION['oauth2_token'] = $token;
 	}
 
 	/**

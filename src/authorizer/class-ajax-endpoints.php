@@ -118,6 +118,92 @@ class Ajax_Endpoints extends Singleton {
 		die( esc_html( $response ) );
 	}
 
+	/**
+	 * Verify the OAuth2 login and set a session token.
+	 *
+	 * Flow: "Sign in with OAuth2" button clicked; JS OAuth2 library
+	 * called; JS function signInCallback() fired with results from OAuth2;
+	 * signInCallback() posts code and nonce (via AJAX) to this function;
+	 * This function checks the token using the OAuth2 PHP library, and
+	 * saves it to a session variable if it's authentic; control passes
+	 * back to signInCallback(), which will reload the current page
+	 * (wp-login.php) on success; wp-login.php reloads; custom_authenticate
+	 * hooked into authenticate action fires again, and
+	 * custom_authenticate_oauth2() runs to verify the token; once verified
+	 * custom_authenticate proceeds as normal with the OAuth2 email address
+	 * as a successfully authenticated external user.
+	 *
+	 * Action: wp_ajax_process_oauth2_login
+	 * Action: wp_ajax_nopriv_process_oauth2_login
+	 *
+	 * @return void, but die with the value to return to the success() function in AJAX call signInCallback().
+	 */
+	public function ajax_process_oauth2_login() {
+		// Nonce check.
+		if (
+			! isset( $_POST['nonce'] ) ||
+			! wp_verify_nonce( sanitize_key( $_POST['nonce'] ), 'oauth2_csrf_nonce' )
+		) {
+			die( '' );
+		}
+
+		// OAuth2 authentication token.
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$id_token = isset( $_POST['credential'] ) ? wp_unslash( $_POST['credential'] ) : null;
+
+		// Grab plugin settings.
+		$options       = Options::get_instance();
+		$auth_settings = $options->get_all( Helper::SINGLE_CONTEXT, 'allow override' );
+
+		// Fetch the OAuth2 Client ID (allow overrides from filter or constant).
+		if ( defined( 'AUTHORIZER_OAUTH2_CLIENT_ID' ) ) {
+			$auth_settings['oauth2_clientid'] = \AUTHORIZER_OAUTH2_CLIENT_ID;
+		}
+		/**
+		 * Filters the OAuth2 Client ID used by Authorizer to authenticate.
+		 *
+		 * @since 3.9.0
+		 *
+		 * @param string $oauth2_client_id  The stored OAuth2 Client ID.
+		 */
+		$auth_settings['oauth2_clientid'] = apply_filters( 'authorizer_oauth2_client_id', $auth_settings['oauth2_clientid'] );
+
+		// Fetch the OAuth2 Client Secret (allow overrides from filter or constant).
+		if ( defined( 'AUTHORIZER_OAUTH2_CLIENT_SECRET' ) ) {
+			$auth_settings['oauth2_clientsecret'] = \AUTHORIZER_OAUTH2_CLIENT_SECRET;
+		}
+		/**
+		 * Filters the OAuth2 Client Secret used by Authorizer to authenticate.
+		 *
+		 * @since 3.6.1
+		 *
+		 * @param string $oauth2_client_secret  The stored OAuth2 Client Secret.
+		 */
+		$auth_settings['oauth2_clientsecret'] = apply_filters( 'authorizer_oauth2_client_secret', $auth_settings['oauth2_clientsecret'] );
+
+		// Build the OAuth2 Client.
+		$provider = new \League\OAuth2\Client\Provider\GenericProvider( array(
+			'clientId'                => $auth_settings['oauth2_clientid'],
+			'clientSecret'            => $auth_settings['oauth2_clientsecret'],
+			'redirectUri'             => site_url( '/wp-login.php?external=oauth2' ),
+			'urlAuthorize'            => $auth_settings['oauth2_url_authorize'],
+			'urlAccessToken'          => $auth_settings['oauth2_url_token'],
+			'urlResourceOwnerDetails' => $auth_settings['oauth2_url_resource'],
+		) );
+
+		// Store the token (for verifying later in wp-login).
+		session_start();
+		if ( empty( $_SESSION['oauth2_token'] ) ) {
+			// Store the token in the session for later use.
+			$_SESSION['oauth2_token'] = $id_token;
+
+			$response = 'Successfully authenticated.';
+		} else {
+			$response = 'Already authenticated.';
+		}
+
+		die( esc_html( $response ) );
+	}
 
 	/**
 	 * Save multisite settings (ajax call).
@@ -756,7 +842,7 @@ class Ajax_Endpoints extends Singleton {
 					} elseif ( false === $changed_user ) {
 						// Update user's role in approved list and save. Note: only do this
 						// if there isn't already a WordPress user. If there is, this role
-						// sync will happen above in WP_User::set_role()
+							// sync will happen above in WP_User::set_role()
 						// (set_user_role action).
 						if ( Authorization::get_instance()->is_email_in_list( $approved_user['email'], 'approved' ) ) {
 							$auth_settings_access_users_approved = $options->sanitize_user_list(
