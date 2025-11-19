@@ -162,6 +162,8 @@ class Ajax_Endpoints extends Singleton {
 			'access_who_can_view',
 			'access_default_role',
 			'oauth2',
+			'oauth2_auto_login',
+			'oauth2_num_servers',
 			'oauth2_provider',
 			'oauth2_custom_label',
 			'oauth2_clientid',
@@ -176,7 +178,6 @@ class Ajax_Endpoints extends Singleton {
 			'oauth2_attr_first_name',
 			'oauth2_attr_last_name',
 			'oauth2_attr_update_on_login',
-			'oauth2_auto_login',
 			'google',
 			'google_clientid',
 			'google_clientsecret',
@@ -218,6 +219,27 @@ class Ajax_Endpoints extends Singleton {
 			'advanced_users_sort_order',
 			'advanced_widget_enabled',
 		);
+		if ( ! empty( $auth_multisite_settings['oauth2_num_servers'] ) && intval( $auth_multisite_settings['oauth2_num_servers'] ) > 1 ) {
+			// Add options if more than one OAuth2 server.
+			foreach ( range( 2, min( intval( $auth_multisite_settings['oauth2_num_servers'] ), 20 ) ) as $oauth2_num_server ) {
+				$allowed = array_merge( $allowed, array(
+					'oauth2_provider_' . $oauth2_num_server,
+					'oauth2_custom_label_' . $oauth2_num_server,
+					'oauth2_clientid_' . $oauth2_num_server,
+					'oauth2_clientsecret_' . $oauth2_num_server,
+					'oauth2_hosteddomain_' . $oauth2_num_server,
+					'oauth2_tenant_id_' . $oauth2_num_server,
+					'oauth2_url_authorize_' . $oauth2_num_server,
+					'oauth2_url_token_' . $oauth2_num_server,
+					'oauth2_url_resource_' . $oauth2_num_server,
+					'oauth2_attr_username_' . $oauth2_num_server,
+					'oauth2_attr_email_' . $oauth2_num_server,
+					'oauth2_attr_first_name_' . $oauth2_num_server,
+					'oauth2_attr_last_name_' . $oauth2_num_server,
+					'oauth2_attr_update_on_login_' . $oauth2_num_server,
+				) );
+			}
+		}
 		if ( ! empty( $auth_multisite_settings['cas_num_servers'] ) && intval( $auth_multisite_settings['cas_num_servers'] ) > 1 ) {
 			// Add options if more than one CAS server.
 			foreach ( range( 2, min( intval( $auth_multisite_settings['cas_num_servers'] ), 10 ) ) as $cas_num_server ) {
@@ -889,6 +911,68 @@ class Ajax_Endpoints extends Singleton {
 		$response = array(
 			'success' => $success,
 			'message' => $message,
+		);
+		wp_send_json( $response );
+		exit;
+	}
+
+
+	/**
+	 * Fetch users matching search query (for Login Access > Which users should
+	 * receive email notifications about pending users) for select2 field.
+	 *
+	 * Action: wp_ajax_auth_settings_search_users
+	 *
+	 * @return void
+	 */
+	public function ajax_auth_settings_search_users() {
+		// Fail silently if current user doesn't have permissions.
+		if ( ! current_user_can( 'create_users' ) ) {
+			die( '' );
+		}
+
+		// Nonce check.
+		if ( empty( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_key( $_POST['nonce'] ), 'save_auth_settings' ) ) {
+			die( '' );
+		}
+
+		// Fail if required post data doesn't exist.
+		if ( ! array_key_exists( 'query', $_POST ) || empty( $_POST['query'] ) ) {
+			die( '' );
+		}
+
+		// Get pagination settings.
+		$per_page = 10;
+		$page     = 1;
+		if ( ! empty( $_POST['page'] ) && intval( $_POST['page'] ) > 0 ) {
+			$page = intval( $_POST['page'] );
+		}
+
+		// Fetch users matching search query.
+		$matching_users = new \WP_User_Query( array(
+			'search'         => '*' . sanitize_text_field( wp_unslash( $_POST['query'] ) ) . '*',
+			'search_columns' => array( 'user_login', 'user_email', 'display_name', 'user_nicename' ),
+			'fields'         => array( 'user_login', 'user_email' ),
+			'number'         => $per_page,
+			'paged'          => $page,
+			'count_total'    => true,
+		) );
+
+		// Send response to client (formatted for select2).
+		// See: https://select2.org/data-sources/ajax.
+		$response = array(
+			'results'    => array_map(
+				function ( $user ) {
+					return array(
+						'id'   => $user->user_login,
+						'text' => sprintf( '%s (%s)', $user->user_login, $user->user_email ),
+					);
+				},
+				$matching_users->get_results()
+			),
+			'pagination' => array(
+				'more' => $page * $per_page < $matching_users->get_total(),
+			),
 		);
 		wp_send_json( $response );
 		exit;

@@ -124,6 +124,19 @@ class Authorization extends Singleton {
 					update_user_meta( $user->ID, 'auth_blocked', 'yes' );
 				}
 
+				// Allow overriding the message blocked users see after logging in.
+				if ( defined( 'AUTHORIZER_LOGIN_MESSAGE_BLOCKED_USERS' ) ) {
+					$auth_settings['access_blocked_redirect_to_message'] = \AUTHORIZER_LOGIN_MESSAGE_BLOCKED_USERS;
+				}
+				/**
+				 * Filters the message blocked users see after logging in.
+				 *
+				 * @since 3.12.0
+				 *
+				 * @param string $message The message content.
+				 */
+				$auth_settings['access_blocked_redirect_to_message'] = apply_filters( 'authorizer_login_message_blocked_users', $auth_settings['access_blocked_redirect_to_message'] );
+
 				// Notify user about blocked status and return without authenticating them.
 				// phpcs:ignore WordPress.Security.NonceVerification
 				$redirect_to = ! empty( $_REQUEST['redirect_to'] ) ? esc_url_raw( wp_unslash( $_REQUEST['redirect_to'] ) ) : home_url();
@@ -496,25 +509,51 @@ class Authorization extends Singleton {
 					$authorizer_options_url = 'settings' === $auth_settings['advanced_admin_menu'] ? admin_url( 'options-general.php?page=authorizer' ) : admin_url( '?page=authorizer' );
 
 					// Notify users with the role specified in "Which role should
-					// receive email notifications about pending users?".
-					if ( strlen( $auth_settings['access_role_receive_pending_emails'] ) > 0 ) {
-						foreach ( get_users( array( 'role' => $auth_settings['access_role_receive_pending_emails'] ) ) as $user_recipient ) {
-							wp_mail(
-								$user_recipient->user_email,
-								sprintf(
-									/* TRANSLATORS: 1: User email 2: Name of site */
-									__( 'Action required: Pending user %1$s at %2$s', 'authorizer' ),
-									$pending_user['email'],
-									$site_name
-								),
-								sprintf(
-									/* TRANSLATORS: 1: Name of site 2: URL of site 3: URL of authorizer */
-									__( "A new user has tried to access the %1\$s site you manage at:\n%2\$s\n\nPlease log in to approve or deny their request:\n%3\$s\n", 'authorizer' ),
-									$site_name,
-									$site_url,
-									$authorizer_options_url
-								)
-							);
+					// receive email notifications about pending users?" and any
+					// individual users specified in "Which users should receive email
+					// notifications about pending users?".
+					if ( strlen( $auth_settings['access_role_receive_pending_emails'] ) > 0 || ! empty( $auth_settings['access_users_receive_pending_emails'] ) ) {
+						$emails_to_notify = array();
+						// Add users with specified role (if any).
+						if ( strlen( $auth_settings['access_role_receive_pending_emails'] ) > 0 ) {
+							foreach ( get_users( array( 'role' => $auth_settings['access_role_receive_pending_emails'] ) ) as $user_recipient ) {
+								if ( ! empty( $user_recipient->user_email ) ) {
+									$emails_to_notify[] = $user_recipient->user_email;
+								}
+							}
+						}
+						// Add individual users (if any).
+						if ( ! empty( $auth_settings['access_users_receive_pending_emails'] ) ) {
+							foreach ( $auth_settings['access_users_receive_pending_emails'] as $username ) {
+								$user_recipient = get_user_by( 'login', $username );
+								if ( ! empty( $user_recipient->user_email ) ) {
+									$emails_to_notify[] = $user_recipient->user_email;
+								}
+							}
+						}
+						// Remove any duplicate email addresses (a user could potentially be
+						// added via their role and again via their username).
+						$emails_to_notify = array_unique( $emails_to_notify );
+						// Email each recipient.
+						if ( count( $emails_to_notify ) > 0 ) {
+							foreach ( $emails_to_notify as $email ) {
+								wp_mail(
+									$email,
+									sprintf(
+										/* TRANSLATORS: 1: User email 2: Name of site */
+										__( 'Action required: Pending user %1$s at %2$s', 'authorizer' ),
+										$pending_user['email'],
+										$site_name
+									),
+									sprintf(
+										/* TRANSLATORS: 1: Name of site 2: URL of site 3: URL of authorizer */
+										__( "A new user has tried to access the %1\$s site you manage at:\n%2\$s\n\nPlease log in to approve or deny their request:\n%3\$s\n", 'authorizer' ),
+										$site_name,
+										$site_url,
+										$authorizer_options_url
+									)
+								);
+							}
 						}
 					}
 				}
@@ -525,6 +564,19 @@ class Authorization extends Singleton {
 				// because a pending user does not have a WP_User, and thus no
 				// "authenticated_by" usermeta that is normally used to do this.
 				$external_param = isset( $user_data['authenticated_by'] ) ? '&external=' . $user_data['authenticated_by'] : '';
+
+				// Allow overriding the message pending users see after logging in.
+				if ( defined( 'AUTHORIZER_LOGIN_MESSAGE_PENDING_USERS' ) ) {
+					$auth_settings['access_pending_redirect_to_message'] = \AUTHORIZER_LOGIN_MESSAGE_PENDING_USERS;
+				}
+				/**
+				 * Filters the message pending users see after logging in.
+				 *
+				 * @since 3.12.0
+				 *
+				 * @param string $message The message content.
+				 */
+				$auth_settings['access_pending_redirect_to_message'] = apply_filters( 'authorizer_login_message_pending_users', $auth_settings['access_pending_redirect_to_message'] );
 
 				// Notify user about pending status and return without authenticating them.
 				// phpcs:ignore WordPress.Security.NonceVerification
@@ -681,6 +733,19 @@ class Authorization extends Singleton {
 			}
 		}
 
+		// Allow overriding the message anonymous users see.
+		if ( defined( 'AUTHORIZER_MESSAGE_ANONYMOUS_USERS' ) ) {
+			$auth_settings['access_redirect_to_message'] = \AUTHORIZER_MESSAGE_ANONYMOUS_USERS;
+		}
+		/**
+		 * Filters the message anonymous users see when visiting public pages on a private site.
+		 *
+		 * @since 3.12.0
+		 *
+		 * @param string $message The message content.
+		 */
+		$auth_settings['access_redirect_to_message'] = apply_filters( 'authorizer_message_anonymous_users', $auth_settings['access_redirect_to_message'] );
+
 		// User is denied access, so show them the error message. Render as JSON
 		// if this is a REST API call; otherwise, show the error message via
 		// wp_die() (rendered html), or redirect to the login URL.
@@ -808,6 +873,19 @@ class Authorization extends Singleton {
 				'logged_in_users' === $auth_settings['access_who_can_view'] &&
 				false === apply_filters( 'authorizer_has_access', false, $GLOBALS['wp'] )
 			) {
+				// Allow overriding the message anonymous users see.
+				if ( defined( 'AUTHORIZER_MESSAGE_ANONYMOUS_USERS' ) ) {
+					$auth_settings['access_redirect_to_message'] = \AUTHORIZER_MESSAGE_ANONYMOUS_USERS;
+				}
+				/**
+				 * Filters the message anonymous users see when visiting public pages on a private site.
+				 *
+				 * @since 3.12.0
+				 *
+				 * @param string $message The message content.
+				 */
+				$auth_settings['access_redirect_to_message'] = apply_filters( 'authorizer_message_anonymous_users', $auth_settings['access_redirect_to_message'] );
+
 				return new \WP_Error(
 					'rest_cannot_view',
 					wp_strip_all_tags( $auth_settings['access_redirect_to_message'] ),

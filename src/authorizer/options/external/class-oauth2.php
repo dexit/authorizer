@@ -70,10 +70,70 @@ class OAuth2 extends \Authorizer\Singleton {
 	 * @param  string $args Args (e.g., multisite admin mode).
 	 * @return void
 	 */
+	public function print_select_oauth2_auto_login( $args = '' ) {
+		// Get plugin option.
+		$options              = Options::get_instance();
+		$option               = 'oauth2_auto_login';
+		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
+		$oauth2_num_servers      = max( 1, min( 20, intval( $args['oauth2_num_servers'] ?? 1 ) ) );
+
+		// Print option elements.
+		?>
+		<select id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]">
+			<option value="" <?php selected( $auth_settings_option, '' ); ?>><?php echo esc_html_e( 'Off', 'default' ); ?></option>
+			<?php foreach ( range( 1, $oauth2_num_servers ) as $server_num ) : ?>
+					<option value="<?php echo esc_attr( $server_num ); ?>" <?php selected( $auth_settings_option, strval( $server_num ) ); ?>>
+						<?php
+						echo esc_html( sprintf(
+							/* TRANSLATORS: OAuth2 server number */
+							__( 'Immediately redirect to OAuth2 server #%s', 'authorizer' ),
+							strval( $server_num )
+						) );
+						?>
+					</option>
+			<?php endforeach; ?>
+		</select>
+		<p class="description">
+			<?php esc_html_e( "Immediately redirect to OAuth2 login form if it's the only enabled external service and WordPress logins are hidden", 'authorizer' ); ?>
+			<br>
+			<small><?php esc_html_e( 'Note: This feature will only work if you have checked "Hide WordPress Logins" in Advanced settings, and if OAuth2 is the only enabled service (i.e., no Google, LDAP, or CAS).', 'authorizer' ); ?></small>
+		</p>
+		<?php
+	}
+
+
+	/**
+	 * Settings print callback.
+	 *
+	 * @param  string $args Args (e.g., multisite admin mode).
+	 * @return void
+	 */
+	public function print_number_oauth2_num_servers( $args = '' ) {
+		// Get plugin option.
+		$options              = Options::get_instance();
+		$option               = 'oauth2_num_servers';
+		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
+		$auth_settings_option = max( 1, min( 20, intval( $auth_settings_option ) ) );
+
+		// Print option elements.
+		?>
+		<input type="number" min="1" max="20" id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" value="<?php echo esc_attr( $auth_settings_option ); ?>" placeholder="" />
+		<p class="description"><?php esc_html_e( 'Note: Save changes after increasing this value to see the options for additional OAuth2 servers below.', 'authorizer' ); ?></p>
+		<?php
+	}
+
+
+	/**
+	 * Settings print callback.
+	 *
+	 * @param  string $args Args (e.g., multisite admin mode).
+	 * @return void
+	 */
 	public function print_select_oauth2_provider( $args = '' ) {
 		// Get plugin option.
 		$options              = Options::get_instance();
-		$option               = 'oauth2_provider';
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_provider' . $suffix;
 		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
 
 		// Override generic provider name to make it translatable (can't use functions above in the variable definition).
@@ -102,7 +162,8 @@ class OAuth2 extends \Authorizer\Singleton {
 	public function print_text_oauth2_custom_label( $args = '' ) {
 		// Get plugin option.
 		$options              = Options::get_instance();
-		$option               = 'oauth2_custom_label';
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_custom_label' . $suffix;
 		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
 
 		// Print option elements.
@@ -122,21 +183,21 @@ class OAuth2 extends \Authorizer\Singleton {
 	public function print_text_oauth2_clientid( $args = '' ) {
 		// Get plugin option.
 		$options              = Options::get_instance();
-		$option               = 'oauth2_clientid';
+		$oauth2_server_id     = $args['oauth2_num_server'] ?? 1;
+		$suffix               = 1 === $oauth2_server_id ? '' : '_' . $oauth2_server_id;
+		$option               = 'oauth2_clientid' . $suffix;
 		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
 
 		// Print option elements.
-		$site_url_parts = wp_parse_url( get_site_url() );
-		$site_url_host  = $site_url_parts['scheme'] . '://' . $site_url_parts['host'] . '/';
 		?>
 		<p>
 			<?php esc_html_e( 'Generate your Client ID and Secret for your selected provider by following their specific instructions.', 'authorizer' ); ?>
 			<?php esc_html_e( 'If asked for a redirect or callback URL, use:', 'authorizer' ); ?>
-			<strong><?php echo esc_html( site_url( '/wp-login.php?external=oauth2' ) ); ?></strong>
+			<strong style="white-space:nowrap;"><?php echo esc_html( site_url( '/wp-login.php?external=oauth2&id=' . $oauth2_server_id ) ); ?></strong>
 		</p>
 		<p>
 			<?php esc_html_e( 'If using Microsoft Azure, omit the querystring; use:', 'authorizer' ); ?>
-			<strong><?php echo esc_html( site_url( '/wp-login.php' ) ); ?></strong>
+			<strong style="white-space:nowrap;"><?php echo esc_html( site_url( '/wp-login.php' ) ); ?></strong>
 		</p>
 		<ol>
 			<?php foreach ( $this->providers as $provider => $provider_data ) : ?>
@@ -153,7 +214,7 @@ class OAuth2 extends \Authorizer\Singleton {
 				<?php
 				echo wp_kses_post(
 					sprintf(
-						/* TRANSLATORS: %s: authorizer_oauth2_client_id (filter name) */
+						/* TRANSLATORS: %s: filter name */
 						__( 'This setting is not editable since it has been defined in the %s filter.', 'authorizer' ),
 						'<code>authorizer_oauth2_client_id</code>'
 					)
@@ -169,7 +230,7 @@ class OAuth2 extends \Authorizer\Singleton {
 				<?php
 				echo wp_kses_post(
 					sprintf(
-						/* TRANSLATORS: %s: AUTHORIZER_OAUTH2_CLIENT_ID (defined constant name) */
+						/* TRANSLATORS: %s: defined constant name */
 						__( 'This setting is not editable since it has been defined in wp-config.php via %s', 'authorizer' ),
 						"<code>define( 'AUTHORIZER_OAUTH2_CLIENT_ID', '...' );</code>"
 					)
@@ -196,7 +257,8 @@ class OAuth2 extends \Authorizer\Singleton {
 	public function print_text_oauth2_clientsecret( $args = '' ) {
 		// Get plugin option.
 		$options              = Options::get_instance();
-		$option               = 'oauth2_clientsecret';
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_clientsecret' . $suffix;
 		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
 
 		// If secret is overridden by filter or constant, don't expose the value;
@@ -208,7 +270,7 @@ class OAuth2 extends \Authorizer\Singleton {
 				<?php
 				echo wp_kses_post(
 					sprintf(
-						/* TRANSLATORS: %s: authorizer_oauth2_client_secret (filter name) */
+						/* TRANSLATORS: %s: filter name */
 						__( 'This setting is not editable since it has been defined in the %s filter.', 'authorizer' ),
 						'<code>authorizer_oauth2_client_secret</code>'
 					)
@@ -224,7 +286,7 @@ class OAuth2 extends \Authorizer\Singleton {
 				<?php
 				echo wp_kses_post(
 					sprintf(
-						/* TRANSLATORS: %s: AUTHORIZER_OAUTH2_CLIENT_SECRET (defined constant name) */
+						/* TRANSLATORS: %s: defined constant name */
 						__( 'This setting is not editable since it has been defined in wp-config.php via %s', 'authorizer' ),
 						"<code>define( 'AUTHORIZER_OAUTH2_CLIENT_SECRET', '...' );</code>"
 					)
@@ -252,7 +314,8 @@ class OAuth2 extends \Authorizer\Singleton {
 	public function print_text_oauth2_hosteddomain( $args = '' ) {
 		// Get plugin option.
 		$options              = Options::get_instance();
-		$option               = 'oauth2_hosteddomain';
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_hosteddomain' . $suffix;
 		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
 
 		// Print option elements.
@@ -272,7 +335,8 @@ class OAuth2 extends \Authorizer\Singleton {
 	public function print_text_oauth2_tenant_id( $args = '' ) {
 		// Get plugin option.
 		$options              = Options::get_instance();
-		$option               = 'oauth2_tenant_id';
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_tenant_id' . $suffix;
 		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
 
 		// Print option elements.
@@ -292,7 +356,8 @@ class OAuth2 extends \Authorizer\Singleton {
 	public function print_text_oauth2_url_authorize( $args = '' ) {
 		// Get plugin option.
 		$options              = Options::get_instance();
-		$option               = 'oauth2_url_authorize';
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_url_authorize' . $suffix;
 		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
 
 		// Print option elements.
@@ -312,7 +377,8 @@ class OAuth2 extends \Authorizer\Singleton {
 	public function print_text_oauth2_url_token( $args = '' ) {
 		// Get plugin option.
 		$options              = Options::get_instance();
-		$option               = 'oauth2_url_token';
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_url_token' . $suffix;
 		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
 
 		// Print option elements.
@@ -332,7 +398,8 @@ class OAuth2 extends \Authorizer\Singleton {
 	public function print_text_oauth2_url_resource( $args = '' ) {
 		// Get plugin option.
 		$options              = Options::get_instance();
-		$option               = 'oauth2_url_resource';
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_url_resource' . $suffix;
 		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
 
 		// Print option elements.
@@ -352,7 +419,8 @@ class OAuth2 extends \Authorizer\Singleton {
 	public function print_text_oauth2_attr_username( $args = '' ) {
 		// Get plugin option.
 		$options              = Options::get_instance();
-		$option               = 'oauth2_attr_username';
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_attr_username' . $suffix;
 		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
 
 		// Print option elements.
@@ -376,7 +444,8 @@ class OAuth2 extends \Authorizer\Singleton {
 	public function print_text_oauth2_attr_email( $args = '' ) {
 		// Get plugin option.
 		$options              = Options::get_instance();
-		$option               = 'oauth2_attr_email';
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_attr_email' . $suffix;
 		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
 
 		// Print option elements.
@@ -400,7 +469,8 @@ class OAuth2 extends \Authorizer\Singleton {
 	public function print_text_oauth2_attr_first_name( $args = '' ) {
 		// Get plugin option.
 		$options              = Options::get_instance();
-		$option               = 'oauth2_attr_first_name';
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_attr_first_name' . $suffix;
 		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
 
 		// Print option elements.
@@ -420,7 +490,8 @@ class OAuth2 extends \Authorizer\Singleton {
 	public function print_text_oauth2_attr_last_name( $args = '' ) {
 		// Get plugin option.
 		$options              = Options::get_instance();
-		$option               = 'oauth2_attr_last_name';
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_attr_last_name' . $suffix;
 		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
 
 		// Print option elements.
@@ -440,7 +511,8 @@ class OAuth2 extends \Authorizer\Singleton {
 	public function print_select_oauth2_attr_update_on_login( $args = '' ) {
 		// Get plugin option.
 		$options              = Options::get_instance();
-		$option               = 'oauth2_attr_update_on_login';
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_attr_update_on_login' . $suffix;
 		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
 		$values               = array(
 			''                => __( 'Do not update first and last name fields on login', 'authorizer' ),
@@ -460,38 +532,21 @@ class OAuth2 extends \Authorizer\Singleton {
 
 
 	/**
-	 * Settings print callback.
-	 *
-	 * @param  string $args Args (e.g., multisite admin mode).
-	 * @return void
-	 */
-	public function print_checkbox_oauth2_auto_login( $args = '' ) {
-		// Get plugin option.
-		$options              = Options::get_instance();
-		$option               = 'oauth2_auto_login';
-		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
-
-		// Print option elements.
-		?>
-		<input type="checkbox" id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" value="1"<?php checked( 1 === intval( $auth_settings_option ) ); ?> /><label for="auth_settings_<?php echo esc_attr( $option ); ?>"><?php esc_html_e( "Immediately redirect to OAuth2 login form if it's the only enabled external service and WordPress logins are hidden", 'authorizer' ); ?></label>
-		<p class="description"><?php esc_html_e( 'Note: This feature will only work if you have checked "Hide WordPress Logins" in Advanced settings, and if OAuth2 is the only enabled service (i.e., no Google, LDAP, or CAS).', 'authorizer' ); ?></p>
-		<?php
-	}
-
-
-	/**
 	 * Restore any redirect_to value saved during an Azure login (in the
 	 * `authenticate` hook). This is needed since the Azure portal needs an
 	 * approved URI to visit after logging in, and cannot have a variable
 	 * redirect_to param in it like the normal WordPress redirect flow.
 	 *
+	 * It is also used after generic OAuth2 logins since many providers discard
+	 * client querystring params.
+	 *
 	 * @hook login_redirect
 	 *
 	 * @param string $redirect_to Destination URL.
 	 */
-	public function maybe_redirect_after_azure_login( $redirect_to ) {
-		if ( ! empty( $_SESSION['azure_redirect_to'] ) ) {
-			$redirect_to = sanitize_url( $_SESSION['azure_redirect_to'] );
+	public function maybe_redirect_after_oauth2_login( $redirect_to ) {
+		if ( ! empty( $_SESSION['oauth2_redirect_to'] ) ) {
+			$redirect_to = sanitize_url( $_SESSION['oauth2_redirect_to'] );
 		}
 
 		return $redirect_to;

@@ -32,11 +32,25 @@ class Login_Form extends Singleton {
 			'warning' === $options->get( 'access_public_warning' ) &&
 			get_option( 'auth_settings_advanced_public_notice' )
 		) {
+			// Allow overriding the message anonymous users see.
+			$authorizer_message_anonymous_users = $options->get( 'access_redirect_to_message' );
+			if ( defined( 'AUTHORIZER_MESSAGE_ANONYMOUS_USERS' ) ) {
+				$authorizer_message_anonymous_users = \AUTHORIZER_MESSAGE_ANONYMOUS_USERS;
+			}
+			/**
+			 * Filters the message anonymous users see when visiting public pages on a private site.
+			 *
+			 * @since 3.12.0
+			 *
+			 * @param string $message The message content.
+			 */
+			$authorizer_message_anonymous_users = apply_filters( 'authorizer_message_anonymous_users', $authorizer_message_anonymous_users );
+
 			$current_path = ! empty( $_SERVER['REQUEST_URI'] ) ? esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : home_url();
 			wp_enqueue_script( 'auth_public_scripts', plugins_url( '/js/authorizer-public.js', plugin_root() ), array( 'jquery' ), '3.2.2', false );
 			$auth_localized = array(
 				'wpLoginUrl'      => wp_login_url( $current_path ),
-				'anonymousNotice' => $options->get( 'access_redirect_to_message' ),
+				'anonymousNotice' => $authorizer_message_anonymous_users,
 				'logIn'           => esc_html__( 'Log In', 'authorizer' ),
 			);
 			wp_localize_script( 'auth_public_scripts', 'auth', $auth_localized );
@@ -242,6 +256,32 @@ function signInCallback( credentialResponse ) { // jshint ignore:line
 						?>
 					</span>
 				</a></p>
+				<?php
+				if ( empty( $auth_settings['oauth2_num_servers'] ) ) :
+					$auth_settings['oauth2_num_servers'] = 1;
+				endif;
+				if ( $auth_settings['oauth2_num_servers'] > 1 ) :
+					for ( $i = 2; $i <= $auth_settings['oauth2_num_servers']; $i++ ) :
+						if ( empty( $auth_settings[ 'oauth2_custom_label_' . $i ] ) ) :
+							continue;
+						endif;
+						?>
+						<p><a class="button button-primary button-external button-<?php echo esc_attr( $auth_settings['oauth2_provider'] ); ?>" href="<?php echo esc_attr( Helper::modify_current_url_for_external_login( 'oauth2', $i ) ); ?>">
+							<span class="dashicons dashicons-lock"></span>
+							<span class="label">
+								<?php
+								echo esc_html(
+									sprintf(
+										/* TRANSLATORS: %s: Custom OAuth2 label from authorizer options */
+										__( 'Sign in with %s', 'authorizer' ),
+										$auth_settings[ 'oauth2_custom_label_' . $i ]
+									)
+								);
+								?>
+							</span>
+						</a></p>
+					<?php endfor; ?>
+				<?php endif; ?>
 			<?php endif; ?>
 
 			<?php if ( '1' === $auth_settings['cas'] ) : ?>
@@ -398,14 +438,14 @@ function signInCallback( credentialResponse ) { // jshint ignore:line
 		if (
 			isset( $_SERVER['QUERY_STRING'] ) &&
 			strpos( $_SERVER['QUERY_STRING'], 'external=wordpress' ) === false && // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
-			array_key_exists( 'oauth2_auto_login', $auth_settings ) && '1' === $auth_settings['oauth2_auto_login'] &&
+			array_key_exists( 'oauth2_auto_login', $auth_settings ) && in_array( intval( $auth_settings['oauth2_auto_login'] ), range( 1, 20 ), true ) &&
 			array_key_exists( 'oauth2', $auth_settings ) && '1' === $auth_settings['oauth2'] &&
 			( ! array_key_exists( 'ldap', $auth_settings ) || '1' !== $auth_settings['ldap'] ) &&
 			( ! array_key_exists( 'google', $auth_settings ) || '1' !== $auth_settings['google'] ) &&
 			( ! array_key_exists( 'cas', $auth_settings ) || '1' !== $auth_settings['cas'] ) &&
 			array_key_exists( 'advanced_hide_wp_login', $auth_settings ) && '1' === $auth_settings['advanced_hide_wp_login']
 		) {
-			wp_redirect( Helper::modify_current_url_for_external_login( 'oauth2' ) ); // phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect
+			wp_redirect( Helper::modify_current_url_for_external_login( 'oauth2', intval( $auth_settings['oauth2_auto_login'] ) ) ); // phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect
 			exit;
 		}
 
