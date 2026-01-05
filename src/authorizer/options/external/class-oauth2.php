@@ -628,13 +628,39 @@ class OAuth2 extends \Authorizer\Singleton {
 		$option               = 'oauth2_custom_field_mappings' . $suffix;
 		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
 
+		// Ensure value is never null to avoid deprecation warnings.
+		if ( is_null( $auth_settings_option ) ) {
+			$auth_settings_option = '';
+		}
+
 		// Print option elements.
 		?>
 		<textarea id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" placeholder="" rows="10" style="width:100%; max-width:600px; font-family:monospace;"><?php echo esc_textarea( $auth_settings_option ); ?></textarea>
 		<p class="description">
-			<?php esc_html_e( 'Map Microsoft 365 profile fields to custom WordPress user meta fields. Enter one mapping per line in the format:', 'authorizer' ); ?>
-			<code>ms365_field=wp_meta_key</code>
+			<?php esc_html_e( 'Map Microsoft 365 profile fields to WordPress user profile and meta fields. Enter one mapping per line in the format:', 'authorizer' ); ?>
+			<code>ms365_field=wp_field_name</code>
 			<br><br>
+			<strong><?php esc_html_e( 'Default WordPress Profile Mappings (Automatic):', 'authorizer' ); ?></strong><br>
+			<small style="line-height: 1.6; display: block; background: #f0f0f0; padding: 10px; border-left: 3px solid #0073aa; margin: 10px 0;">
+				<strong><?php esc_html_e( 'Core Profile Fields:', 'authorizer' ); ?></strong><br>
+				• givenName → first_name<br>
+				• surname → last_name<br>
+				• aboutMe → description (bio)<br>
+				• mySite → user_url (website)<br>
+				• displayName → nickname<br><br>
+				<strong><?php esc_html_e( 'Contact & Location:', 'authorizer' ); ?></strong><br>
+				• jobTitle → job_title<br>
+				• companyName → company<br>
+				• officeLocation → office<br>
+				• mobilePhone → phone<br>
+				• city → billing_city<br>
+				• state → billing_state<br>
+				• country → billing_country<br>
+				• postalCode → billing_postcode<br>
+				• streetAddress → billing_address_1<br><br>
+				<em><?php esc_html_e( 'These fields are automatically synced to WordPress profile fields. Add custom mappings below to override or add more.', 'authorizer' ); ?></em>
+			</small>
+			<br>
 			<strong><?php esc_html_e( 'Available MS365 Fields:', 'authorizer' ); ?></strong><br>
 			<small style="line-height: 1.6;">
 				<strong><?php esc_html_e( 'Basic:', 'authorizer' ); ?></strong> id, displayName, givenName, surname, userPrincipalName, mail, mailNickname<br>
@@ -645,17 +671,30 @@ class OAuth2 extends \Authorizer\Singleton {
 				<strong><?php esc_html_e( 'Extension Attributes:', 'authorizer' ); ?></strong> extensionAttribute1, extensionAttribute2, ..., extensionAttribute15
 			</small>
 			<br><br>
-			<strong><?php esc_html_e( 'Example mappings:', 'authorizer' ); ?></strong><br>
+			<strong><?php esc_html_e( 'Custom Mapping Examples:', 'authorizer' ); ?></strong><br>
 			<code>
-				jobTitle=user_job_title<br>
+				# Override defaults<br>
+				aboutMe=user_bio<br>
+				<br>
+				# Add new mappings<br>
 				department=user_department<br>
 				skills=user_skills<br>
 				birthday=user_birthdate<br>
-				extensionAttribute1=employee_cost_center<br>
-				extensionAttribute2=manager_email
+				hireDate=employee_start_date<br>
+				<br>
+				# Extension attributes<br>
+				extensionAttribute1=cost_center<br>
+				extensionAttribute2=manager_email<br>
+				extensionAttribute3=building_code
 			</code>
 			<br><br>
-			<small><?php esc_html_e( 'Note: If no custom mappings are defined, all fields will be stored with "oauth2_" prefix (e.g., oauth2_jobTitle). With custom mappings, you can use any WordPress user meta key name.', 'authorizer' ); ?></small>
+			<small>
+				<strong><?php esc_html_e( 'How it works:', 'authorizer' ); ?></strong><br>
+				1. <?php esc_html_e( 'Default mappings are applied automatically (see above)', 'authorizer' ); ?><br>
+				2. <?php esc_html_e( 'Custom mappings override defaults', 'authorizer' ); ?><br>
+				3. <?php esc_html_e( 'Unmapped fields use "oauth2_" prefix (e.g., oauth2_employeeId)', 'authorizer' ); ?><br>
+				4. <?php esc_html_e( 'Profile photo is automatically synced to WordPress avatar', 'authorizer' ); ?>
+			</small>
 		</p>
 		<?php
 	}

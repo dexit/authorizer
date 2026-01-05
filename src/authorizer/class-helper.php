@@ -873,6 +873,108 @@ class Helper {
 
 
 	/**
+	 * Fetch user's group memberships from Microsoft Graph API.
+	 *
+	 * @param  string $access_token OAuth2 access token.
+	 * @return array|false Array of group objects or false on failure.
+	 */
+	public static function fetch_microsoft_user_groups( $access_token ) {
+		if ( empty( $access_token ) ) {
+			return false;
+		}
+
+		// Fetch user's group memberships.
+		$response = wp_remote_get(
+			'https://graph.microsoft.com/v1.0/me/memberOf',
+			array(
+				'headers' => array(
+					'Authorization' => 'Bearer ' . $access_token,
+				),
+				'timeout' => 15,
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			error_log( 'Microsoft Graph groups fetch error: ' . $response->get_error_message() ); // phpcs:ignore
+			return false;
+		}
+
+		$status_code = wp_remote_retrieve_response_code( $response );
+		if ( 200 !== $status_code ) {
+			error_log( 'Microsoft Graph groups fetch failed with status: ' . $status_code ); // phpcs:ignore
+			return false;
+		}
+
+		$body = wp_remote_retrieve_body( $response );
+		$data = json_decode( $body, true );
+
+		if ( empty( $data['value'] ) || ! is_array( $data['value'] ) ) {
+			return array();
+		}
+
+		// Extract group information.
+		$groups = array();
+		foreach ( $data['value'] as $group ) {
+			// Only include security and distribution groups (not directory roles).
+			if ( isset( $group['@odata.type'] ) && strpos( $group['@odata.type'], 'group' ) !== false ) {
+				$groups[] = array(
+					'id'          => isset( $group['id'] ) ? $group['id'] : '',
+					'displayName' => isset( $group['displayName'] ) ? $group['displayName'] : '',
+					'mail'        => isset( $group['mail'] ) ? $group['mail'] : '',
+					'description' => isset( $group['description'] ) ? $group['description'] : '',
+				);
+			}
+		}
+
+		return $groups;
+	}
+
+
+	/**
+	 * Test MS Graph API connection and fetch available fields for a user.
+	 * This is used by the admin field tester.
+	 *
+	 * @param  string $access_token OAuth2 access token.
+	 * @return array|WP_Error Array with profile data and groups, or WP_Error on failure.
+	 */
+	public static function test_microsoft_graph_connection( $access_token ) {
+		if ( empty( $access_token ) ) {
+			return new \WP_Error( 'empty_token', __( 'Access token is empty', 'authorizer' ) );
+		}
+
+		$result = array(
+			'profile' => false,
+			'groups'  => false,
+			'photo'   => false,
+		);
+
+		// Test profile fields fetch.
+		$profile = self::fetch_microsoft_graph_profile_fields( $access_token );
+		if ( false !== $profile ) {
+			$result['profile'] = $profile;
+		}
+
+		// Test groups fetch.
+		$groups = self::fetch_microsoft_user_groups( $access_token );
+		if ( false !== $groups ) {
+			$result['groups'] = $groups;
+		}
+
+		// Test photo availability.
+		$photo = self::fetch_microsoft_graph_profile_photo( $access_token );
+		if ( false !== $photo ) {
+			$result['photo'] = array(
+				'available' => true,
+				'type'      => $photo['type'],
+				'size'      => strlen( $photo['data'] ),
+			);
+		}
+
+		return $result;
+	}
+
+
+	/**
 	 * Save user profile photo to WordPress uploads directory.
 	 *
 	 * @param  int    $user_id    WordPress user ID.

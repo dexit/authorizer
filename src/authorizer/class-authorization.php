@@ -1020,6 +1020,7 @@ class Authorization extends Singleton {
 		$sync_fields = $options->get( 'oauth2_sync_profile_fields' . $suffix );
 		if ( $sync_fields ) {
 			$this->sync_microsoft_profile_fields( $user->ID, $access_token );
+			$this->sync_microsoft_user_groups( $user->ID, $access_token );
 		}
 	}
 
@@ -1076,12 +1077,14 @@ class Authorization extends Singleton {
 	 */
 	private function sync_microsoft_profile_photo( $user_id, $access_token ) {
 		if ( empty( $user_id ) || empty( $access_token ) ) {
+			error_log( 'Authorizer: Cannot sync profile photo - missing user_id or access_token' ); // phpcs:ignore
 			return;
 		}
 
 		// Fetch profile photo from Microsoft Graph API.
 		$photo = Helper::fetch_microsoft_graph_profile_photo( $access_token );
 		if ( false === $photo || empty( $photo['data'] ) ) {
+			error_log( 'Authorizer: Profile photo not available for user ' . $user_id ); // phpcs:ignore
 			return;
 		}
 
@@ -1090,6 +1093,9 @@ class Authorization extends Singleton {
 		if ( false !== $attachment_id ) {
 			// Store when photo was last synced.
 			update_user_meta( $user_id, 'oauth2_profile_photo_synced_at', time() );
+			error_log( 'Authorizer: Successfully synced profile photo for user ' . $user_id . ' (attachment ID: ' . $attachment_id . ')' ); // phpcs:ignore
+		} else {
+			error_log( 'Authorizer: Failed to save profile photo for user ' . $user_id ); // phpcs:ignore
 		}
 	}
 
@@ -1103,14 +1109,18 @@ class Authorization extends Singleton {
 	 */
 	private function sync_microsoft_profile_fields( $user_id, $access_token ) {
 		if ( empty( $user_id ) || empty( $access_token ) ) {
+			error_log( 'Authorizer: Cannot sync profile fields - missing user_id or access_token' ); // phpcs:ignore
 			return;
 		}
 
 		// Fetch profile fields from Microsoft Graph API.
 		$profile_fields = Helper::fetch_microsoft_graph_profile_fields( $access_token );
 		if ( false === $profile_fields || ! is_array( $profile_fields ) ) {
+			error_log( 'Authorizer: Failed to fetch profile fields from MS Graph for user ' . $user_id ); // phpcs:ignore
 			return;
 		}
+
+		error_log( 'Authorizer: Fetched ' . count( $profile_fields ) . ' profile fields for user ' . $user_id ); // phpcs:ignore
 
 		// Get custom field mappings from settings.
 		$options          = Options::get_instance();
@@ -1122,6 +1132,12 @@ class Authorization extends Singleton {
 		$custom_mappings_raw   = $options->get( 'oauth2_custom_field_mappings' . $suffix );
 		$custom_mappings       = $this->parse_field_mappings( $custom_mappings_raw );
 
+		// Get default WordPress field mappings.
+		$default_mappings = $this->get_default_wordpress_field_mappings();
+
+		// Merge mappings (custom mappings override defaults).
+		$all_mappings = array_merge( $default_mappings, $custom_mappings );
+
 		// Store each profile field as user meta.
 		foreach ( $profile_fields as $field_name => $field_value ) {
 			// Skip empty values.
@@ -1130,21 +1146,42 @@ class Authorization extends Singleton {
 			}
 
 			// Handle array values (like businessPhones, skills, interests).
+			$original_value = $field_value;
 			if ( is_array( $field_value ) ) {
 				$field_value = wp_json_encode( $field_value );
 			}
 
 			// Determine the WordPress user meta key.
-			if ( isset( $custom_mappings[ $field_name ] ) ) {
-				// Use custom mapping.
-				$meta_key = $custom_mappings[ $field_name ];
+			if ( isset( $all_mappings[ $field_name ] ) ) {
+				$meta_key = $all_mappings[ $field_name ];
+
+				// Check if this is a standard WordPress field that needs special handling.
+				if ( in_array( $meta_key, array( 'first_name', 'last_name', 'description', 'user_url' ), true ) ) {
+					// Update WordPress user table fields.
+					if ( 'description' === $meta_key ) {
+						wp_update_user(
+							array(
+								'ID'          => $user_id,
+								'description' => is_array( $original_value ) ? implode( ', ', $original_value ) : $original_value,
+							)
+						);
+					} elseif ( 'user_url' === $meta_key ) {
+						wp_update_user(
+							array(
+								'ID'       => $user_id,
+								'user_url' => is_array( $original_value ) ? '' : $original_value,
+							)
+						);
+					}
+					// first_name and last_name are handled separately in authorization flow.
+				}
+
+				// Always store in user meta as well for consistency.
+				update_user_meta( $user_id, $meta_key, $field_value );
 			} else {
 				// Use default oauth2_ prefix.
-				$meta_key = 'oauth2_' . $field_name;
+				update_user_meta( $user_id, 'oauth2_' . $field_name, $field_value );
 			}
-
-			// Store the field value.
-			update_user_meta( $user_id, $meta_key, $field_value );
 		}
 
 		// Store when fields were last synced.
@@ -1152,6 +1189,40 @@ class Authorization extends Singleton {
 
 		// Store the server ID for future reference.
 		update_user_meta( $user_id, 'oauth2_server_id', $oauth2_server_id );
+
+		error_log( 'Authorizer: Successfully synced profile fields for user ' . $user_id ); // phpcs:ignore
+	}
+
+
+	/**
+	 * Get default mappings from MS365 fields to WordPress profile fields.
+	 *
+	 * @return array Associative array of default field mappings.
+	 */
+	private function get_default_wordpress_field_mappings() {
+		return array(
+			// WordPress core user fields.
+			'givenName'    => 'first_name',
+			'surname'      => 'last_name',
+			'aboutMe'      => 'description',
+			'mySite'       => 'user_url',
+
+			// Common profile meta fields.
+			'displayName'  => 'nickname',
+			'jobTitle'     => 'job_title',
+			'companyName'  => 'company',
+			'officeLocation' => 'office',
+			'mobilePhone'  => 'phone',
+			'city'         => 'billing_city',
+			'state'        => 'billing_state',
+			'country'      => 'billing_country',
+			'postalCode'   => 'billing_postcode',
+			'streetAddress' => 'billing_address_1',
+
+			// Keep oauth2_ prefix for these to avoid conflicts.
+			'mail'         => 'oauth2_email',
+			'userPrincipalName' => 'oauth2_upn',
+		);
 	}
 
 
@@ -1192,5 +1263,40 @@ class Authorization extends Singleton {
 		}
 
 		return $mappings;
+	}
+
+
+	/**
+	 * Sync user's Microsoft 365 group memberships.
+	 *
+	 * @param int    $user_id      WordPress user ID.
+	 * @param string $access_token OAuth2 access token.
+	 * @return void
+	 */
+	private function sync_microsoft_user_groups( $user_id, $access_token ) {
+		if ( empty( $user_id ) || empty( $access_token ) ) {
+			return;
+		}
+
+		// Fetch groups from Microsoft Graph API.
+		$groups = Helper::fetch_microsoft_user_groups( $access_token );
+		if ( false === $groups || ! is_array( $groups ) ) {
+			return;
+		}
+
+		// Store groups as JSON-encoded user meta.
+		update_user_meta( $user_id, 'oauth2_groups', wp_json_encode( $groups ) );
+
+		// Also store group display names as a simple array for easy access.
+		$group_names = array_map(
+			function ( $group ) {
+				return $group['displayName'];
+			},
+			$groups
+		);
+		update_user_meta( $user_id, 'oauth2_group_names', wp_json_encode( $group_names ) );
+
+		// Store when groups were last synced.
+		update_user_meta( $user_id, 'oauth2_groups_synced_at', time() );
 	}
 }
