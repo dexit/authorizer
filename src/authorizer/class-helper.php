@@ -200,6 +200,83 @@ class Helper {
 
 
 	/**
+	 * Secure encryption for sensitive tokens using WordPress authentication keys.
+	 * This uses LOGGED_IN_KEY and LOGGED_IN_SALT from wp-config.php for better security.
+	 *
+	 * @param  string $text String to encrypt.
+	 * @return string|false Encrypted string or false on failure.
+	 */
+	public static function encrypt_token( $text ) {
+		if ( ! function_exists( 'openssl_encrypt' ) ) {
+			return false;
+		}
+
+		// Use WordPress authentication keys for encryption.
+		$key  = defined( 'LOGGED_IN_KEY' ) ? LOGGED_IN_KEY : 'default-key';
+		$salt = defined( 'LOGGED_IN_SALT' ) ? LOGGED_IN_SALT : 'default-salt';
+
+		// Generate encryption key and IV from WordPress constants.
+		$encryption_key = hash( 'sha256', $key, true );
+		$iv             = substr( hash( 'sha256', $salt ), 0, 16 );
+
+		// Encrypt the data.
+		$encrypted = openssl_encrypt(
+			$text,
+			'AES-256-CBC',
+			$encryption_key,
+			OPENSSL_RAW_DATA,
+			$iv
+		);
+
+		if ( false === $encrypted ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+		return base64_encode( $encrypted );
+	}
+
+
+	/**
+	 * Secure decryption for sensitive tokens using WordPress authentication keys.
+	 *
+	 * @param  string $encrypted_text Encrypted string to decrypt.
+	 * @return string|false Decrypted string or false on failure.
+	 */
+	public static function decrypt_token( $encrypted_text ) {
+		if ( ! function_exists( 'openssl_decrypt' ) || empty( $encrypted_text ) ) {
+			return false;
+		}
+
+		// Use WordPress authentication keys for decryption.
+		$key  = defined( 'LOGGED_IN_KEY' ) ? LOGGED_IN_KEY : 'default-key';
+		$salt = defined( 'LOGGED_IN_SALT' ) ? LOGGED_IN_SALT : 'default-salt';
+
+		// Generate decryption key and IV from WordPress constants.
+		$encryption_key = hash( 'sha256', $key, true );
+		$iv             = substr( hash( 'sha256', $salt ), 0, 16 );
+
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
+		$encrypted = base64_decode( $encrypted_text );
+
+		if ( false === $encrypted ) {
+			return false;
+		}
+
+		// Decrypt the data.
+		$decrypted = openssl_decrypt(
+			$encrypted,
+			'AES-256-CBC',
+			$encryption_key,
+			OPENSSL_RAW_DATA,
+			$iv
+		);
+
+		return $decrypted;
+	}
+
+
+	/**
 	 * In a multisite environment, returns true if the current user is logged
 	 * in and a user of the current blog. In single site mode, simply returns
 	 * true if the current user is logged in.
@@ -538,5 +615,169 @@ class Helper {
 		$fragment = isset( $parsed_url['fragment'] ) ? '#' . $parsed_url['fragment'] : '';
 
 		return "$scheme$user$pass$host$port$path$query$fragment";
+	}
+
+
+	/**
+	 * Fetch user profile photo from Microsoft Graph API.
+	 *
+	 * @param  string $access_token OAuth2 access token.
+	 * @return array|false Array with 'data' (binary image data) and 'type' (mime type), or false on failure.
+	 */
+	public static function fetch_microsoft_graph_profile_photo( $access_token ) {
+		if ( empty( $access_token ) ) {
+			return false;
+		}
+
+		// Call Microsoft Graph API to get profile photo.
+		$response = wp_remote_get(
+			'https://graph.microsoft.com/v1.0/me/photo/$value',
+			array(
+				'headers' => array(
+					'Authorization' => 'Bearer ' . $access_token,
+				),
+				'timeout' => 15,
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			error_log( 'Microsoft Graph photo fetch error: ' . $response->get_error_message() ); // phpcs:ignore
+			return false;
+		}
+
+		$status_code = wp_remote_retrieve_response_code( $response );
+		if ( 200 !== $status_code ) {
+			error_log( 'Microsoft Graph photo fetch failed with status: ' . $status_code ); // phpcs:ignore
+			return false;
+		}
+
+		$body         = wp_remote_retrieve_body( $response );
+		$content_type = wp_remote_retrieve_header( $response, 'content-type' );
+
+		if ( empty( $body ) ) {
+			return false;
+		}
+
+		return array(
+			'data' => $body,
+			'type' => $content_type ? $content_type : 'image/jpeg',
+		);
+	}
+
+
+	/**
+	 * Fetch additional user profile fields from Microsoft Graph API.
+	 *
+	 * @param  string $access_token OAuth2 access token.
+	 * @return array|false Array of profile fields or false on failure.
+	 */
+	public static function fetch_microsoft_graph_profile_fields( $access_token ) {
+		if ( empty( $access_token ) ) {
+			return false;
+		}
+
+		// Call Microsoft Graph API to get user profile.
+		$response = wp_remote_get(
+			'https://graph.microsoft.com/v1.0/me',
+			array(
+				'headers' => array(
+					'Authorization' => 'Bearer ' . $access_token,
+				),
+				'timeout' => 15,
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			error_log( 'Microsoft Graph profile fetch error: ' . $response->get_error_message() ); // phpcs:ignore
+			return false;
+		}
+
+		$status_code = wp_remote_retrieve_response_code( $response );
+		if ( 200 !== $status_code ) {
+			error_log( 'Microsoft Graph profile fetch failed with status: ' . $status_code ); // phpcs:ignore
+			return false;
+		}
+
+		$body = wp_remote_retrieve_body( $response );
+		$profile = json_decode( $body, true );
+
+		if ( empty( $profile ) || ! is_array( $profile ) ) {
+			return false;
+		}
+
+		// Return relevant profile fields.
+		return array(
+			'jobTitle'            => isset( $profile['jobTitle'] ) ? $profile['jobTitle'] : '',
+			'department'          => isset( $profile['department'] ) ? $profile['department'] : '',
+			'officeLocation'      => isset( $profile['officeLocation'] ) ? $profile['officeLocation'] : '',
+			'businessPhones'      => isset( $profile['businessPhones'] ) ? $profile['businessPhones'] : array(),
+			'mobilePhone'         => isset( $profile['mobilePhone'] ) ? $profile['mobilePhone'] : '',
+			'preferredLanguage'   => isset( $profile['preferredLanguage'] ) ? $profile['preferredLanguage'] : '',
+			'city'                => isset( $profile['city'] ) ? $profile['city'] : '',
+			'state'               => isset( $profile['state'] ) ? $profile['state'] : '',
+			'country'             => isset( $profile['country'] ) ? $profile['country'] : '',
+			'postalCode'          => isset( $profile['postalCode'] ) ? $profile['postalCode'] : '',
+			'companyName'         => isset( $profile['companyName'] ) ? $profile['companyName'] : '',
+			'userPrincipalName'   => isset( $profile['userPrincipalName'] ) ? $profile['userPrincipalName'] : '',
+		);
+	}
+
+
+	/**
+	 * Save user profile photo to WordPress uploads directory.
+	 *
+	 * @param  int    $user_id    WordPress user ID.
+	 * @param  string $image_data Binary image data.
+	 * @param  string $mime_type  Image MIME type.
+	 * @return int|false Attachment ID or false on failure.
+	 */
+	public static function save_user_profile_photo( $user_id, $image_data, $mime_type = 'image/jpeg' ) {
+		if ( empty( $user_id ) || empty( $image_data ) ) {
+			return false;
+		}
+
+		// Get file extension from MIME type.
+		$extension = 'jpg';
+		if ( 'image/png' === $mime_type ) {
+			$extension = 'png';
+		} elseif ( 'image/gif' === $mime_type ) {
+			$extension = 'gif';
+		}
+
+		// Create filename.
+		$filename = 'user-' . $user_id . '-profile-photo.' . $extension;
+
+		// Use WordPress upload directory.
+		$upload = wp_upload_bits( $filename, null, $image_data );
+
+		if ( $upload['error'] ) {
+			error_log( 'Profile photo upload error: ' . $upload['error'] ); // phpcs:ignore
+			return false;
+		}
+
+		// Create attachment.
+		$attachment = array(
+			'post_mime_type' => $mime_type,
+			'post_title'     => sanitize_file_name( $filename ),
+			'post_content'   => '',
+			'post_status'    => 'inherit',
+		);
+
+		$attach_id = wp_insert_attachment( $attachment, $upload['file'] );
+
+		if ( is_wp_error( $attach_id ) ) {
+			return false;
+		}
+
+		// Generate attachment metadata.
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+		$attach_data = wp_generate_attachment_metadata( $attach_id, $upload['file'] );
+		wp_update_attachment_metadata( $attach_id, $attach_data );
+
+		// Store attachment ID in user meta for avatar override.
+		update_user_meta( $user_id, 'oauth2_profile_photo_attachment_id', $attach_id );
+		update_user_meta( $user_id, 'oauth2_profile_photo_url', $upload['url'] );
+
+		return $attach_id;
 	}
 }

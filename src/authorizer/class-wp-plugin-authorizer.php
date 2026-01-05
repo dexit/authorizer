@@ -99,6 +99,9 @@ class WP_Plugin_Authorizer extends Singleton {
 		// Modify login page with external auth links (if enabled; e.g., google or cas).
 		add_action( 'login_form', array( Login_Form::get_instance(), 'login_form_add_external_service_links' ) );
 
+		// Override WordPress avatar with Microsoft 365 profile photo if available.
+		add_filter( 'pre_get_avatar_data', array( $this, 'override_avatar_with_oauth2_photo' ), 10, 2 );
+
 		// Redirect to CAS login when visiting login page (only if option is
 		// enabled, CAS is the only service, and WordPress logins are hidden).
 		// Note: hook into wp_login_errors filter so this fires after the
@@ -264,6 +267,48 @@ class WP_Plugin_Authorizer extends Singleton {
 			$options->set_default_options();
 			$sync_userdata->add_wp_users_to_approved_list();
 		}
+	}
+
+
+	/**
+	 * Override WordPress avatar with OAuth2 profile photo if available.
+	 *
+	 * @param array             $args        Arguments passed to get_avatar_data(), after processing.
+	 * @param int|string|object $id_or_email A user ID, email address, or comment object.
+	 * @return array Modified avatar arguments.
+	 */
+	public function override_avatar_with_oauth2_photo( $args, $id_or_email ) {
+		// Get user ID from various input types.
+		$user_id = false;
+		if ( is_numeric( $id_or_email ) ) {
+			$user_id = (int) $id_or_email;
+		} elseif ( is_string( $id_or_email ) && is_email( $id_or_email ) ) {
+			$user = get_user_by( 'email', $id_or_email );
+			if ( $user ) {
+				$user_id = $user->ID;
+			}
+		} elseif ( $id_or_email instanceof \WP_User ) {
+			$user_id = $id_or_email->ID;
+		} elseif ( $id_or_email instanceof \WP_Post ) {
+			$user_id = $id_or_email->post_author;
+		} elseif ( $id_or_email instanceof \WP_Comment ) {
+			if ( ! empty( $id_or_email->user_id ) ) {
+				$user_id = $id_or_email->user_id;
+			}
+		}
+
+		if ( ! $user_id ) {
+			return $args;
+		}
+
+		// Check if user has a synced OAuth2 profile photo.
+		$photo_url = get_user_meta( $user_id, 'oauth2_profile_photo_url', true );
+		if ( ! empty( $photo_url ) ) {
+			$args['url']          = $photo_url;
+			$args['found_avatar'] = true;
+		}
+
+		return $args;
 	}
 
 

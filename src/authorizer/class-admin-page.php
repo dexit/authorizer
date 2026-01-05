@@ -684,6 +684,36 @@ class Admin_Page extends Singleton {
 					'oauth2_num_server' => $oauth2_num_server,
 				)
 			);
+			add_settings_field(
+				'auth_settings_oauth2_store_access_token' . $suffix,
+				$prefix . __( 'Store access token', 'authorizer' ),
+				array( Oauth2::get_instance(), 'print_checkbox_oauth2_store_access_token' ),
+				'authorizer',
+				'auth_settings_external_oauth2',
+				array(
+					'oauth2_num_server' => $oauth2_num_server,
+				)
+			);
+			add_settings_field(
+				'auth_settings_oauth2_sync_profile_photo' . $suffix,
+				$prefix . __( 'Sync profile photo', 'authorizer' ),
+				array( Oauth2::get_instance(), 'print_checkbox_oauth2_sync_profile_photo' ),
+				'authorizer',
+				'auth_settings_external_oauth2',
+				array(
+					'oauth2_num_server' => $oauth2_num_server,
+				)
+			);
+			add_settings_field(
+				'auth_settings_oauth2_sync_profile_fields' . $suffix,
+				$prefix . __( 'Sync profile fields', 'authorizer' ),
+				array( Oauth2::get_instance(), 'print_checkbox_oauth2_sync_profile_fields' ),
+				'authorizer',
+				'auth_settings_external_oauth2',
+				array(
+					'oauth2_num_server' => $oauth2_num_server,
+				)
+			);
 		}
 
 		// Create External Service (OIDC) Settings section.

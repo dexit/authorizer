@@ -936,6 +936,7 @@ class Authentication extends Singleton {
 			'oauth2_provider'   => $oauth2_provider,
 			'oauth2_attributes' => $attributes,
 			'oauth2_server_id'  => $oauth2_server_id,
+			'oauth2_token'      => isset( $token ) ? $token : null,
 		);
 	}
 
