@@ -1077,12 +1077,14 @@ class Authorization extends Singleton {
 	 */
 	private function sync_microsoft_profile_photo( $user_id, $access_token ) {
 		if ( empty( $user_id ) || empty( $access_token ) ) {
+			error_log( 'Authorizer: Cannot sync profile photo - missing user_id or access_token' ); // phpcs:ignore
 			return;
 		}
 
 		// Fetch profile photo from Microsoft Graph API.
 		$photo = Helper::fetch_microsoft_graph_profile_photo( $access_token );
 		if ( false === $photo || empty( $photo['data'] ) ) {
+			error_log( 'Authorizer: Profile photo not available for user ' . $user_id ); // phpcs:ignore
 			return;
 		}
 
@@ -1091,6 +1093,9 @@ class Authorization extends Singleton {
 		if ( false !== $attachment_id ) {
 			// Store when photo was last synced.
 			update_user_meta( $user_id, 'oauth2_profile_photo_synced_at', time() );
+			error_log( 'Authorizer: Successfully synced profile photo for user ' . $user_id . ' (attachment ID: ' . $attachment_id . ')' ); // phpcs:ignore
+		} else {
+			error_log( 'Authorizer: Failed to save profile photo for user ' . $user_id ); // phpcs:ignore
 		}
 	}
 
@@ -1104,14 +1109,18 @@ class Authorization extends Singleton {
 	 */
 	private function sync_microsoft_profile_fields( $user_id, $access_token ) {
 		if ( empty( $user_id ) || empty( $access_token ) ) {
+			error_log( 'Authorizer: Cannot sync profile fields - missing user_id or access_token' ); // phpcs:ignore
 			return;
 		}
 
 		// Fetch profile fields from Microsoft Graph API.
 		$profile_fields = Helper::fetch_microsoft_graph_profile_fields( $access_token );
 		if ( false === $profile_fields || ! is_array( $profile_fields ) ) {
+			error_log( 'Authorizer: Failed to fetch profile fields from MS Graph for user ' . $user_id ); // phpcs:ignore
 			return;
 		}
+
+		error_log( 'Authorizer: Fetched ' . count( $profile_fields ) . ' profile fields for user ' . $user_id ); // phpcs:ignore
 
 		// Get custom field mappings from settings.
 		$options          = Options::get_instance();
@@ -1153,6 +1162,8 @@ class Authorization extends Singleton {
 
 		// Store the server ID for future reference.
 		update_user_meta( $user_id, 'oauth2_server_id', $oauth2_server_id );
+
+		error_log( 'Authorizer: Successfully synced profile fields for user ' . $user_id ); // phpcs:ignore
 	}
 
 
