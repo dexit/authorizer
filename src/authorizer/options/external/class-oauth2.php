@@ -538,6 +538,130 @@ class OAuth2 extends \Authorizer\Singleton {
 
 
 	/**
+	 * Settings print callback.
+	 *
+	 * @param  string $args Args (e.g., multisite admin mode).
+	 * @return void
+	 */
+	public function print_checkbox_oauth2_store_access_token( $args = '' ) {
+		// Get plugin option.
+		$options              = Options::get_instance();
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_store_access_token' . $suffix;
+		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
+
+		// Print option elements.
+		?>
+		<input type="checkbox" id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" value="1"<?php checked( 1 === intval( $auth_settings_option ) ); ?> />
+		<label for="auth_settings_<?php echo esc_attr( $option ); ?>"><?php esc_html_e( 'Store OAuth2 access token in user meta', 'authorizer' ); ?></label>
+		<p class="description">
+			<?php esc_html_e( 'Enable this to store the OAuth2 access token (and refresh token if available) encrypted in the database. This allows other plugins to make API calls on behalf of the user.', 'authorizer' ); ?>
+			<br>
+			<small><?php esc_html_e( 'Note: Tokens are encrypted using WordPress authentication keys and removed on logout.', 'authorizer' ); ?></small>
+		</p>
+		<?php
+	}
+
+
+	/**
+	 * Settings print callback.
+	 *
+	 * @param  string $args Args (e.g., multisite admin mode).
+	 * @return void
+	 */
+	public function print_checkbox_oauth2_sync_profile_photo( $args = '' ) {
+		// Get plugin option.
+		$options              = Options::get_instance();
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_sync_profile_photo' . $suffix;
+		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
+
+		// Print option elements.
+		?>
+		<input type="checkbox" id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" value="1"<?php checked( 1 === intval( $auth_settings_option ) ); ?> />
+		<label for="auth_settings_<?php echo esc_attr( $option ); ?>"><?php esc_html_e( 'Sync profile photo from Microsoft 365', 'authorizer' ); ?></label>
+		<p class="description">
+			<?php esc_html_e( 'Enable this to download the user\'s profile photo from Microsoft 365 and set it as their WordPress avatar.', 'authorizer' ); ?>
+			<br>
+			<small><?php esc_html_e( 'Note: This feature only works with Microsoft Azure OAuth2 provider and requires the "Store OAuth2 access token" option to be enabled.', 'authorizer' ); ?></small>
+		</p>
+		<?php
+	}
+
+
+	/**
+	 * Settings print callback.
+	 *
+	 * @param  string $args Args (e.g., multisite admin mode).
+	 * @return void
+	 */
+	public function print_checkbox_oauth2_sync_profile_fields( $args = '' ) {
+		// Get plugin option.
+		$options              = Options::get_instance();
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_sync_profile_fields' . $suffix;
+		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
+
+		// Print option elements.
+		?>
+		<input type="checkbox" id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" value="1"<?php checked( 1 === intval( $auth_settings_option ) ); ?> />
+		<label for="auth_settings_<?php echo esc_attr( $option ); ?>"><?php esc_html_e( 'Sync additional profile fields from Microsoft 365', 'authorizer' ); ?></label>
+		<p class="description">
+			<?php esc_html_e( 'Enable this to sync additional profile data from Microsoft 365 such as job title, department, phone number, office location, skills, birthday, extension attributes, and more.', 'authorizer' ); ?>
+			<br>
+			<small><?php esc_html_e( 'Note: Fields are stored as WordPress user meta with "oauth2_" prefix (e.g., oauth2_jobTitle, oauth2_department, oauth2_skills). Requires "Store OAuth2 access token" to be enabled.', 'authorizer' ); ?></small>
+		</p>
+		<?php
+	}
+
+
+	/**
+	 * Settings print callback for custom field mappings.
+	 *
+	 * @param  string $args Args (e.g., multisite admin mode).
+	 * @return void
+	 */
+	public function print_textarea_oauth2_custom_field_mappings( $args = '' ) {
+		// Get plugin option.
+		$options              = Options::get_instance();
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_custom_field_mappings' . $suffix;
+		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
+
+		// Print option elements.
+		?>
+		<textarea id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" placeholder="" rows="10" style="width:100%; max-width:600px; font-family:monospace;"><?php echo esc_textarea( $auth_settings_option ); ?></textarea>
+		<p class="description">
+			<?php esc_html_e( 'Map Microsoft 365 profile fields to custom WordPress user meta fields. Enter one mapping per line in the format:', 'authorizer' ); ?>
+			<code>ms365_field=wp_meta_key</code>
+			<br><br>
+			<strong><?php esc_html_e( 'Available MS365 Fields:', 'authorizer' ); ?></strong><br>
+			<small style="line-height: 1.6;">
+				<strong><?php esc_html_e( 'Basic:', 'authorizer' ); ?></strong> id, displayName, givenName, surname, userPrincipalName, mail, mailNickname<br>
+				<strong><?php esc_html_e( 'Job:', 'authorizer' ); ?></strong> jobTitle, department, companyName, employeeId, employeeType, officeLocation<br>
+				<strong><?php esc_html_e( 'Contact:', 'authorizer' ); ?></strong> businessPhones, mobilePhone, faxNumber<br>
+				<strong><?php esc_html_e( 'Location:', 'authorizer' ); ?></strong> city, state, country, postalCode, streetAddress, usageLocation<br>
+				<strong><?php esc_html_e( 'Additional:', 'authorizer' ); ?></strong> preferredLanguage, ageGroup, aboutMe, birthday, hireDate, interests, mySite, pastProjects, preferredName, responsibilities, schools, skills<br>
+				<strong><?php esc_html_e( 'Extension Attributes:', 'authorizer' ); ?></strong> extensionAttribute1, extensionAttribute2, ..., extensionAttribute15
+			</small>
+			<br><br>
+			<strong><?php esc_html_e( 'Example mappings:', 'authorizer' ); ?></strong><br>
+			<code>
+				jobTitle=user_job_title<br>
+				department=user_department<br>
+				skills=user_skills<br>
+				birthday=user_birthdate<br>
+				extensionAttribute1=employee_cost_center<br>
+				extensionAttribute2=manager_email
+			</code>
+			<br><br>
+			<small><?php esc_html_e( 'Note: If no custom mappings are defined, all fields will be stored with "oauth2_" prefix (e.g., oauth2_jobTitle). With custom mappings, you can use any WordPress user meta key name.', 'authorizer' ); ?></small>
+		</p>
+		<?php
+	}
+
+
+	/**
 	 * Restore any redirect_to value saved during an Azure login (in the
 	 * `authenticate` hook). This is needed since the Azure portal needs an
 	 * approved URI to visit after logging in, and cannot have a variable

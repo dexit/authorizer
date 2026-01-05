@@ -349,6 +349,11 @@ class Authorization extends Singleton {
 						update_user_meta( $user->ID, 'authenticated_by', $user_data['authenticated_by'] );
 					}
 
+					// Store OAuth2 token and sync profile data if enabled.
+					if ( $user && 'oauth2' === $user_data['authenticated_by'] && 'azure' === $user_data['oauth2_provider'] ) {
+						$this->handle_oauth2_token_and_profile_sync( $user, $user_data, $auth_settings );
+					}
+
 					// If multisite, iterate through all sites in the network and add the user
 					// currently logging in to any of them that have the user on the approved list.
 					// Note: this is useful for first-time logins--some users will have access
@@ -431,6 +436,11 @@ class Authorization extends Singleton {
 					}
 					if ( $should_update_last_name ) {
 						update_user_meta( $user->ID, 'last_name', $user_data['last_name'] );
+					}
+
+					// Store OAuth2 token and sync profile data if enabled (for existing users).
+					if ( $user && 'oauth2' === $user_data['authenticated_by'] && 'azure' === $user_data['oauth2_provider'] ) {
+						$this->handle_oauth2_token_and_profile_sync( $user, $user_data, $auth_settings );
 					}
 				}
 
@@ -966,5 +976,221 @@ class Authorization extends Singleton {
 				}
 				return Helper::in_multi_array( $email, $auth_settings_access_users_approved );
 		}
+	}
+
+
+	/**
+	 * Handle OAuth2 token storage and profile synchronization for Azure/Microsoft 365.
+	 *
+	 * @param WP_User $user          WordPress user object.
+	 * @param array   $user_data     User data from OAuth2 provider.
+	 * @param array   $auth_settings Plugin settings.
+	 * @return void
+	 */
+	private function handle_oauth2_token_and_profile_sync( $user, $user_data, $auth_settings ) {
+		if ( empty( $user ) || empty( $user_data ) || empty( $user_data['oauth2_token'] ) ) {
+			return;
+		}
+
+		$options          = Options::get_instance();
+		$oauth2_server_id = isset( $user_data['oauth2_server_id'] ) ? $user_data['oauth2_server_id'] : 1;
+		$suffix           = 1 === $oauth2_server_id ? '' : '_' . $oauth2_server_id;
+
+		// Check if token storage is enabled.
+		$store_token = $options->get( 'oauth2_store_access_token' . $suffix );
+		if ( $store_token ) {
+			$this->store_oauth2_token( $user->ID, $user_data['oauth2_token'] );
+		}
+
+		// Get access token for API calls.
+		$token        = $user_data['oauth2_token'];
+		$access_token = method_exists( $token, 'getToken' ) ? $token->getToken() : null;
+
+		if ( empty( $access_token ) ) {
+			return;
+		}
+
+		// Check if profile photo sync is enabled.
+		$sync_photo = $options->get( 'oauth2_sync_profile_photo' . $suffix );
+		if ( $sync_photo ) {
+			$this->sync_microsoft_profile_photo( $user->ID, $access_token );
+		}
+
+		// Check if profile fields sync is enabled.
+		$sync_fields = $options->get( 'oauth2_sync_profile_fields' . $suffix );
+		if ( $sync_fields ) {
+			$this->sync_microsoft_profile_fields( $user->ID, $access_token );
+		}
+	}
+
+
+	/**
+	 * Store OAuth2 access token and refresh token encrypted in user meta.
+	 *
+	 * @param int    $user_id WordPress user ID.
+	 * @param object $token   OAuth2 token object.
+	 * @return void
+	 */
+	private function store_oauth2_token( $user_id, $token ) {
+		if ( empty( $user_id ) || empty( $token ) ) {
+			return;
+		}
+
+		// Extract token data.
+		$access_token  = method_exists( $token, 'getToken' ) ? $token->getToken() : null;
+		$refresh_token = method_exists( $token, 'getRefreshToken' ) ? $token->getRefreshToken() : null;
+		$expires       = method_exists( $token, 'getExpires' ) ? $token->getExpires() : null;
+
+		if ( empty( $access_token ) ) {
+			return;
+		}
+
+		// Encrypt tokens using WordPress authentication keys.
+		$encrypted_access_token = Helper::encrypt_token( $access_token );
+		if ( false !== $encrypted_access_token ) {
+			update_user_meta( $user_id, 'oauth2_access_token', $encrypted_access_token );
+		}
+
+		if ( ! empty( $refresh_token ) ) {
+			$encrypted_refresh_token = Helper::encrypt_token( $refresh_token );
+			if ( false !== $encrypted_refresh_token ) {
+				update_user_meta( $user_id, 'oauth2_refresh_token', $encrypted_refresh_token );
+			}
+		}
+
+		if ( ! empty( $expires ) ) {
+			update_user_meta( $user_id, 'oauth2_token_expires', $expires );
+		}
+
+		// Store timestamp of when token was saved.
+		update_user_meta( $user_id, 'oauth2_token_saved_at', time() );
+	}
+
+
+	/**
+	 * Sync user profile photo from Microsoft 365.
+	 *
+	 * @param int    $user_id      WordPress user ID.
+	 * @param string $access_token OAuth2 access token.
+	 * @return void
+	 */
+	private function sync_microsoft_profile_photo( $user_id, $access_token ) {
+		if ( empty( $user_id ) || empty( $access_token ) ) {
+			return;
+		}
+
+		// Fetch profile photo from Microsoft Graph API.
+		$photo = Helper::fetch_microsoft_graph_profile_photo( $access_token );
+		if ( false === $photo || empty( $photo['data'] ) ) {
+			return;
+		}
+
+		// Save profile photo to WordPress.
+		$attachment_id = Helper::save_user_profile_photo( $user_id, $photo['data'], $photo['type'] );
+		if ( false !== $attachment_id ) {
+			// Store when photo was last synced.
+			update_user_meta( $user_id, 'oauth2_profile_photo_synced_at', time() );
+		}
+	}
+
+
+	/**
+	 * Sync additional profile fields from Microsoft 365.
+	 *
+	 * @param int    $user_id      WordPress user ID.
+	 * @param string $access_token OAuth2 access token.
+	 * @return void
+	 */
+	private function sync_microsoft_profile_fields( $user_id, $access_token ) {
+		if ( empty( $user_id ) || empty( $access_token ) ) {
+			return;
+		}
+
+		// Fetch profile fields from Microsoft Graph API.
+		$profile_fields = Helper::fetch_microsoft_graph_profile_fields( $access_token );
+		if ( false === $profile_fields || ! is_array( $profile_fields ) ) {
+			return;
+		}
+
+		// Get custom field mappings from settings.
+		$options          = Options::get_instance();
+		$oauth2_server_id = get_user_meta( $user_id, 'oauth2_server_id', true );
+		if ( empty( $oauth2_server_id ) ) {
+			$oauth2_server_id = 1;
+		}
+		$suffix                = 1 === intval( $oauth2_server_id ) ? '' : '_' . $oauth2_server_id;
+		$custom_mappings_raw   = $options->get( 'oauth2_custom_field_mappings' . $suffix );
+		$custom_mappings       = $this->parse_field_mappings( $custom_mappings_raw );
+
+		// Store each profile field as user meta.
+		foreach ( $profile_fields as $field_name => $field_value ) {
+			// Skip empty values.
+			if ( empty( $field_value ) && '0' !== $field_value && 0 !== $field_value ) {
+				continue;
+			}
+
+			// Handle array values (like businessPhones, skills, interests).
+			if ( is_array( $field_value ) ) {
+				$field_value = wp_json_encode( $field_value );
+			}
+
+			// Determine the WordPress user meta key.
+			if ( isset( $custom_mappings[ $field_name ] ) ) {
+				// Use custom mapping.
+				$meta_key = $custom_mappings[ $field_name ];
+			} else {
+				// Use default oauth2_ prefix.
+				$meta_key = 'oauth2_' . $field_name;
+			}
+
+			// Store the field value.
+			update_user_meta( $user_id, $meta_key, $field_value );
+		}
+
+		// Store when fields were last synced.
+		update_user_meta( $user_id, 'oauth2_profile_fields_synced_at', time() );
+
+		// Store the server ID for future reference.
+		update_user_meta( $user_id, 'oauth2_server_id', $oauth2_server_id );
+	}
+
+
+	/**
+	 * Parse custom field mappings from settings.
+	 *
+	 * @param string $mappings_raw Raw mappings string from settings.
+	 * @return array Associative array of ms365_field => wp_meta_key mappings.
+	 */
+	private function parse_field_mappings( $mappings_raw ) {
+		$mappings = array();
+
+		if ( empty( $mappings_raw ) ) {
+			return $mappings;
+		}
+
+		// Split by newlines.
+		$lines = explode( "\n", $mappings_raw );
+
+		foreach ( $lines as $line ) {
+			$line = trim( $line );
+
+			// Skip empty lines and comments.
+			if ( empty( $line ) || strpos( $line, '#' ) === 0 || strpos( $line, '//' ) === 0 ) {
+				continue;
+			}
+
+			// Parse mapping in format: ms365_field=wp_meta_key.
+			if ( strpos( $line, '=' ) !== false ) {
+				list( $ms365_field, $wp_meta_key ) = explode( '=', $line, 2 );
+				$ms365_field = trim( $ms365_field );
+				$wp_meta_key = trim( $wp_meta_key );
+
+				if ( ! empty( $ms365_field ) && ! empty( $wp_meta_key ) ) {
+					$mappings[ $ms365_field ] = $wp_meta_key;
+				}
+			}
+		}
+
+		return $mappings;
 	}
 }
