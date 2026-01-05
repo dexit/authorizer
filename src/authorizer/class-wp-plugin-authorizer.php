@@ -152,6 +152,10 @@ class WP_Plugin_Authorizer extends Singleton {
 		// AJAX: Refresh approved user list.
 		add_action( 'wp_ajax_refresh_approved_user_list', array( Ajax_Endpoints::get_instance(), 'ajax_refresh_approved_user_list' ) );
 
+		// Show OAuth2 profile data in user profile page.
+		add_action( 'show_user_profile', array( User_Profile::get_instance(), 'show_oauth2_profile_fields' ) );
+		add_action( 'edit_user_profile', array( User_Profile::get_instance(), 'show_oauth2_profile_fields' ) );
+
 		// AJAX: Test LDAP user.
 		add_action( 'wp_ajax_auth_settings_ldap_test_user', array( Ajax_Endpoints::get_instance(), 'ajax_auth_settings_ldap_test_user' ) );
 

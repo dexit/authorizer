@@ -40,6 +40,7 @@ require_once __DIR__ . '/src/authorizer/class-dashboard-widget.php';
 require_once __DIR__ . '/src/authorizer/class-ajax-endpoints.php';
 require_once __DIR__ . '/src/authorizer/class-sync-userdata.php';
 require_once __DIR__ . '/src/authorizer/class-admin-page.php';
+require_once __DIR__ . '/src/authorizer/class-user-profile.php';
 
 require_once __DIR__ . '/src/authorizer/class-options.php';
 

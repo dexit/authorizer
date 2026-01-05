@@ -1020,6 +1020,7 @@ class Authorization extends Singleton {
 		$sync_fields = $options->get( 'oauth2_sync_profile_fields' . $suffix );
 		if ( $sync_fields ) {
 			$this->sync_microsoft_profile_fields( $user->ID, $access_token );
+			$this->sync_microsoft_user_groups( $user->ID, $access_token );
 		}
 	}
 
@@ -1192,5 +1193,40 @@ class Authorization extends Singleton {
 		}
 
 		return $mappings;
+	}
+
+
+	/**
+	 * Sync user's Microsoft 365 group memberships.
+	 *
+	 * @param int    $user_id      WordPress user ID.
+	 * @param string $access_token OAuth2 access token.
+	 * @return void
+	 */
+	private function sync_microsoft_user_groups( $user_id, $access_token ) {
+		if ( empty( $user_id ) || empty( $access_token ) ) {
+			return;
+		}
+
+		// Fetch groups from Microsoft Graph API.
+		$groups = Helper::fetch_microsoft_user_groups( $access_token );
+		if ( false === $groups || ! is_array( $groups ) ) {
+			return;
+		}
+
+		// Store groups as JSON-encoded user meta.
+		update_user_meta( $user_id, 'oauth2_groups', wp_json_encode( $groups ) );
+
+		// Also store group display names as a simple array for easy access.
+		$group_names = array_map(
+			function ( $group ) {
+				return $group['displayName'];
+			},
+			$groups
+		);
+		update_user_meta( $user_id, 'oauth2_group_names', wp_json_encode( $group_names ) );
+
+		// Store when groups were last synced.
+		update_user_meta( $user_id, 'oauth2_groups_synced_at', time() );
 	}
 }

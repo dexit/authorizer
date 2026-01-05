@@ -628,6 +628,11 @@ class OAuth2 extends \Authorizer\Singleton {
 		$option               = 'oauth2_custom_field_mappings' . $suffix;
 		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
 
+		// Ensure value is never null to avoid deprecation warnings.
+		if ( is_null( $auth_settings_option ) ) {
+			$auth_settings_option = '';
+		}
+
 		// Print option elements.
 		?>
 		<textarea id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" placeholder="" rows="10" style="width:100%; max-width:600px; font-family:monospace;"><?php echo esc_textarea( $auth_settings_option ); ?></textarea>
