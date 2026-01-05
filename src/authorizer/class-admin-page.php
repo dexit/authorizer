@@ -714,6 +714,16 @@ class Admin_Page extends Singleton {
 					'oauth2_num_server' => $oauth2_num_server,
 				)
 			);
+			add_settings_field(
+				'auth_settings_oauth2_custom_field_mappings' . $suffix,
+				$prefix . __( 'Custom field mappings', 'authorizer' ),
+				array( Oauth2::get_instance(), 'print_textarea_oauth2_custom_field_mappings' ),
+				'authorizer',
+				'auth_settings_external_oauth2',
+				array(
+					'oauth2_num_server' => $oauth2_num_server,
+				)
+			);
 		}
 
 		// Create External Service (OIDC) Settings section.

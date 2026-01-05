@@ -1112,18 +1112,85 @@ class Authorization extends Singleton {
 			return;
 		}
 
-		// Store each profile field as user meta with oauth2_ prefix.
+		// Get custom field mappings from settings.
+		$options          = Options::get_instance();
+		$oauth2_server_id = get_user_meta( $user_id, 'oauth2_server_id', true );
+		if ( empty( $oauth2_server_id ) ) {
+			$oauth2_server_id = 1;
+		}
+		$suffix                = 1 === intval( $oauth2_server_id ) ? '' : '_' . $oauth2_server_id;
+		$custom_mappings_raw   = $options->get( 'oauth2_custom_field_mappings' . $suffix );
+		$custom_mappings       = $this->parse_field_mappings( $custom_mappings_raw );
+
+		// Store each profile field as user meta.
 		foreach ( $profile_fields as $field_name => $field_value ) {
-			if ( ! empty( $field_value ) ) {
-				// Handle array values (like businessPhones).
-				if ( is_array( $field_value ) ) {
-					$field_value = wp_json_encode( $field_value );
-				}
-				update_user_meta( $user_id, 'oauth2_' . $field_name, $field_value );
+			// Skip empty values.
+			if ( empty( $field_value ) && '0' !== $field_value && 0 !== $field_value ) {
+				continue;
 			}
+
+			// Handle array values (like businessPhones, skills, interests).
+			if ( is_array( $field_value ) ) {
+				$field_value = wp_json_encode( $field_value );
+			}
+
+			// Determine the WordPress user meta key.
+			if ( isset( $custom_mappings[ $field_name ] ) ) {
+				// Use custom mapping.
+				$meta_key = $custom_mappings[ $field_name ];
+			} else {
+				// Use default oauth2_ prefix.
+				$meta_key = 'oauth2_' . $field_name;
+			}
+
+			// Store the field value.
+			update_user_meta( $user_id, $meta_key, $field_value );
 		}
 
 		// Store when fields were last synced.
 		update_user_meta( $user_id, 'oauth2_profile_fields_synced_at', time() );
+
+		// Store the server ID for future reference.
+		update_user_meta( $user_id, 'oauth2_server_id', $oauth2_server_id );
+	}
+
+
+	/**
+	 * Parse custom field mappings from settings.
+	 *
+	 * @param string $mappings_raw Raw mappings string from settings.
+	 * @return array Associative array of ms365_field => wp_meta_key mappings.
+	 */
+	private function parse_field_mappings( $mappings_raw ) {
+		$mappings = array();
+
+		if ( empty( $mappings_raw ) ) {
+			return $mappings;
+		}
+
+		// Split by newlines.
+		$lines = explode( "\n", $mappings_raw );
+
+		foreach ( $lines as $line ) {
+			$line = trim( $line );
+
+			// Skip empty lines and comments.
+			if ( empty( $line ) || strpos( $line, '#' ) === 0 || strpos( $line, '//' ) === 0 ) {
+				continue;
+			}
+
+			// Parse mapping in format: ms365_field=wp_meta_key.
+			if ( strpos( $line, '=' ) !== false ) {
+				list( $ms365_field, $wp_meta_key ) = explode( '=', $line, 2 );
+				$ms365_field = trim( $ms365_field );
+				$wp_meta_key = trim( $wp_meta_key );
+
+				if ( ! empty( $ms365_field ) && ! empty( $wp_meta_key ) ) {
+					$mappings[ $ms365_field ] = $wp_meta_key;
+				}
+			}
+		}
+
+		return $mappings;
 	}
 }

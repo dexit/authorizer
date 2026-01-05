@@ -676,9 +676,54 @@ class Helper {
 			return false;
 		}
 
-		// Call Microsoft Graph API to get user profile.
+		// Call Microsoft Graph API to get user profile with extended properties.
+		// Use $select to request specific fields including extension attributes.
+		$select_fields = array(
+			// Basic Info
+			'id',
+			'displayName',
+			'givenName',
+			'surname',
+			'userPrincipalName',
+			'mail',
+			'mailNickname',
+			// Job Info
+			'jobTitle',
+			'department',
+			'companyName',
+			'employeeId',
+			'employeeType',
+			'officeLocation',
+			// Contact Info
+			'businessPhones',
+			'mobilePhone',
+			'faxNumber',
+			// Location
+			'city',
+			'state',
+			'country',
+			'postalCode',
+			'streetAddress',
+			'usageLocation',
+			// Additional Fields
+			'preferredLanguage',
+			'ageGroup',
+			'aboutMe',
+			'birthday',
+			'hireDate',
+			'interests',
+			'mySite',
+			'pastProjects',
+			'preferredName',
+			'responsibilities',
+			'schools',
+			'skills',
+		);
+
+		$url = 'https://graph.microsoft.com/v1.0/me?$select=' . implode( ',', $select_fields );
+
 		$response = wp_remote_get(
-			'https://graph.microsoft.com/v1.0/me',
+			$url,
 			array(
 				'headers' => array(
 					'Authorization' => 'Bearer ' . $access_token,
@@ -698,28 +743,132 @@ class Helper {
 			return false;
 		}
 
-		$body = wp_remote_retrieve_body( $response );
+		$body    = wp_remote_retrieve_body( $response );
 		$profile = json_decode( $body, true );
 
 		if ( empty( $profile ) || ! is_array( $profile ) ) {
 			return false;
 		}
 
-		// Return relevant profile fields.
-		return array(
-			'jobTitle'            => isset( $profile['jobTitle'] ) ? $profile['jobTitle'] : '',
-			'department'          => isset( $profile['department'] ) ? $profile['department'] : '',
-			'officeLocation'      => isset( $profile['officeLocation'] ) ? $profile['officeLocation'] : '',
-			'businessPhones'      => isset( $profile['businessPhones'] ) ? $profile['businessPhones'] : array(),
-			'mobilePhone'         => isset( $profile['mobilePhone'] ) ? $profile['mobilePhone'] : '',
-			'preferredLanguage'   => isset( $profile['preferredLanguage'] ) ? $profile['preferredLanguage'] : '',
-			'city'                => isset( $profile['city'] ) ? $profile['city'] : '',
-			'state'               => isset( $profile['state'] ) ? $profile['state'] : '',
-			'country'             => isset( $profile['country'] ) ? $profile['country'] : '',
-			'postalCode'          => isset( $profile['postalCode'] ) ? $profile['postalCode'] : '',
-			'companyName'         => isset( $profile['companyName'] ) ? $profile['companyName'] : '',
-			'userPrincipalName'   => isset( $profile['userPrincipalName'] ) ? $profile['userPrincipalName'] : '',
+		// Also fetch extension attributes (onPremisesExtensionAttributes) separately as they require different endpoint.
+		$extension_attrs = self::fetch_microsoft_extension_attributes( $access_token );
+		if ( is_array( $extension_attrs ) ) {
+			$profile = array_merge( $profile, $extension_attrs );
+		}
+
+		// Return all available profile fields.
+		$result = array();
+		$fields_to_extract = array(
+			// Basic
+			'id',
+			'displayName',
+			'givenName',
+			'surname',
+			'userPrincipalName',
+			'mail',
+			'mailNickname',
+			// Job
+			'jobTitle',
+			'department',
+			'companyName',
+			'employeeId',
+			'employeeType',
+			'officeLocation',
+			// Contact
+			'businessPhones',
+			'mobilePhone',
+			'faxNumber',
+			// Location
+			'city',
+			'state',
+			'country',
+			'postalCode',
+			'streetAddress',
+			'usageLocation',
+			// Additional
+			'preferredLanguage',
+			'ageGroup',
+			'aboutMe',
+			'birthday',
+			'hireDate',
+			'interests',
+			'mySite',
+			'pastProjects',
+			'preferredName',
+			'responsibilities',
+			'schools',
+			'skills',
+			// Extension Attributes (1-15)
+			'extensionAttribute1',
+			'extensionAttribute2',
+			'extensionAttribute3',
+			'extensionAttribute4',
+			'extensionAttribute5',
+			'extensionAttribute6',
+			'extensionAttribute7',
+			'extensionAttribute8',
+			'extensionAttribute9',
+			'extensionAttribute10',
+			'extensionAttribute11',
+			'extensionAttribute12',
+			'extensionAttribute13',
+			'extensionAttribute14',
+			'extensionAttribute15',
 		);
+
+		foreach ( $fields_to_extract as $field ) {
+			$result[ $field ] = isset( $profile[ $field ] ) ? $profile[ $field ] : '';
+		}
+
+		return $result;
+	}
+
+
+	/**
+	 * Fetch extension attributes from Microsoft Graph API.
+	 *
+	 * @param  string $access_token OAuth2 access token.
+	 * @return array|false Array of extension attributes or false on failure.
+	 */
+	public static function fetch_microsoft_extension_attributes( $access_token ) {
+		if ( empty( $access_token ) ) {
+			return false;
+		}
+
+		// Fetch onPremisesExtensionAttributes which contains extensionAttribute1-15.
+		$response = wp_remote_get(
+			'https://graph.microsoft.com/v1.0/me?$select=onPremisesExtensionAttributes',
+			array(
+				'headers' => array(
+					'Authorization' => 'Bearer ' . $access_token,
+				),
+				'timeout' => 15,
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return false;
+		}
+
+		$status_code = wp_remote_retrieve_response_code( $response );
+		if ( 200 !== $status_code ) {
+			return false;
+		}
+
+		$body = wp_remote_retrieve_body( $response );
+		$data = json_decode( $body, true );
+
+		if ( empty( $data['onPremisesExtensionAttributes'] ) || ! is_array( $data['onPremisesExtensionAttributes'] ) ) {
+			return array();
+		}
+
+		// Flatten the extension attributes to top level.
+		$extension_attrs = array();
+		foreach ( $data['onPremisesExtensionAttributes'] as $key => $value ) {
+			$extension_attrs[ $key ] = $value;
+		}
+
+		return $extension_attrs;
 	}
 
 
