@@ -42,7 +42,7 @@ class WP_Plugin_Authorizer extends Singleton {
 
 		// Custom logout action using external service.
 		add_action( 'clear_auth_cookie', array( Authentication::get_instance(), 'pre_logout' ) );
-		add_action( 'wp_logout', array( Authentication::get_instance(), 'custom_logout' ) );
+		add_action( 'wp_logout', array( Authentication::get_instance(), 'custom_logout' ), 10, 1 );
 
 		// Create settings link on Plugins page.
 		add_filter( 'plugin_action_links_' . plugin_basename( plugin_root() ), array( Admin_Page::get_instance(), 'plugin_settings_link' ) );
@@ -54,14 +54,14 @@ class WP_Plugin_Authorizer extends Singleton {
 		// Modify the log in URL (if applicable options are set).
 		add_filter( 'login_url', array( Login_Form::get_instance(), 'maybe_add_external_wordpress_to_log_in_links' ) );
 
-		// If we have a custom login error, add the filter to show it.
-		$error = get_option( 'auth_settings_advanced_login_error' );
-		if ( $error && strlen( $error ) > 0 ) {
-			add_filter( 'login_errors', array( Login_Form::get_instance(), 'show_advanced_login_error' ) );
-		}
+		// If we have a custom login error, show it.
+		add_filter( 'login_errors', array( Login_Form::get_instance(), 'show_advanced_login_error' ) );
 
 		// Redirect to wp-login.php?redirect_to=? destination after an OAuth2 login.
 		add_filter( 'login_redirect', array( Options\External\OAuth2::get_instance(), 'maybe_redirect_after_oauth2_login' ), 10, 2 );
+
+		// Redirect to wp-login.php?redirect_to=? destination after an OIDC login.
+		add_filter( 'login_redirect', array( Options\External\Oidc::get_instance(), 'maybe_redirect_after_oidc_login' ), 10, 2 );
 
 		// Perform plugin updates if newer version installed.
 		add_action( 'plugins_loaded', array( Updates::get_instance(), 'auth_update_check' ) );
@@ -114,6 +114,7 @@ class WP_Plugin_Authorizer extends Singleton {
 		// output is started (so the redirect header doesn't complain about data
 		// already being sent).
 		add_filter( 'wp_login_errors', array( Login_Form::get_instance(), 'wp_login_errors__maybe_redirect_to_oauth2' ), 10, 2 );
+		add_filter( 'wp_login_errors', array( Login_Form::get_instance(), 'wp_login_errors__maybe_redirect_to_oidc' ), 10, 2 );
 
 		// Prevent access to password reset if WordPress logins are disabled.
 		add_filter( 'lost_password_html_link', array( Login_Form::get_instance(), 'maybe_hide_lost_password_link' ), PHP_INT_MAX, 1 );
@@ -158,12 +159,9 @@ class WP_Plugin_Authorizer extends Singleton {
 		// Hint: For Multisite Network Admin Dashboard use wp_network_dashboard_setup instead of wp_dashboard_setup.
 		add_action( 'wp_dashboard_setup', array( Dashboard_Widget::get_instance(), 'add_dashboard_widgets' ) );
 
-		// If we have a custom admin message, add the action to show it.
-		$notice = get_option( 'auth_settings_advanced_admin_notice' );
-		if ( $notice && strlen( $notice ) > 0 ) {
-			add_action( 'admin_notices', array( Admin_Page::get_instance(), 'show_advanced_admin_notice' ) );
-			add_action( 'network_admin_notices', array( Admin_Page::get_instance(), 'show_advanced_admin_notice' ) );
-		}
+		// If we have a custom admin message, render it.
+		add_action( 'admin_notices', array( Admin_Page::get_instance(), 'show_advanced_admin_notice' ) );
+		add_action( 'network_admin_notices', array( Admin_Page::get_instance(), 'show_advanced_admin_notice' ) );
 
 		// Add [authorizer_login_form] shortcode to render the login form.
 		add_shortcode( 'authorizer_login_form', array( Login_Form::get_instance(), 'shortcode_authorizer_login_form' ) );

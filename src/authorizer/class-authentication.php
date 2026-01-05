@@ -141,6 +141,7 @@ class Authentication extends Singleton {
 		// Try OAuth2 authentication if it's enabled and we don't have a
 		// successful login yet.
 		if (
+			isset( $auth_settings['oauth2'] ) &&
 			'1' === $auth_settings['oauth2'] &&
 			0 === count( $externally_authenticated_emails ) &&
 			! is_wp_error( $result )
@@ -156,9 +157,29 @@ class Authentication extends Singleton {
 			}
 		}
 
+		// Try OIDC authentication if it's enabled and we don't have a
+		// successful login yet.
+		if (
+			isset( $auth_settings['oidc'] ) &&
+			'1' === $auth_settings['oidc'] &&
+			0 === count( $externally_authenticated_emails ) &&
+			! is_wp_error( $result )
+		) {
+			$result = $this->custom_authenticate_oidc( $auth_settings );
+			if ( ! is_null( $result ) && ! is_wp_error( $result ) ) {
+				if ( is_array( $result['email'] ) ) {
+					$externally_authenticated_emails = $result['email'];
+				} else {
+					$externally_authenticated_emails[] = $result['email'];
+				}
+				$authenticated_by = $result['authenticated_by'];
+			}
+		}
+
 		// Try Google authentication if it's enabled and we don't have a
 		// successful login yet.
 		if (
+			isset( $auth_settings['google'] ) &&
 			'1' === $auth_settings['google'] &&
 			0 === count( $externally_authenticated_emails ) &&
 			! is_wp_error( $result )
@@ -177,6 +198,7 @@ class Authentication extends Singleton {
 		// Try CAS authentication if it's enabled and we don't have a
 		// successful login yet.
 		if (
+			isset( $auth_settings['cas'] ) &&
 			'1' === $auth_settings['cas'] &&
 			0 === count( $externally_authenticated_emails ) &&
 			! is_wp_error( $result )
@@ -195,6 +217,7 @@ class Authentication extends Singleton {
 		// Try LDAP authentication if it's enabled and we don't have an
 		// authenticated user yet.
 		if (
+			isset( $auth_settings['ldap'] ) &&
 			'1' === $auth_settings['ldap'] &&
 			0 === count( $externally_authenticated_emails ) &&
 			! is_wp_error( $result )
@@ -219,10 +242,11 @@ class Authentication extends Singleton {
 				array_key_exists( 'advanced_disable_wp_login', $auth_settings ) &&
 				'1' === $auth_settings['advanced_disable_wp_login'] &&
 				(
-					'1' === $auth_settings['cas'] ||
-					'1' === $auth_settings['oauth2'] ||
-					'1' === $auth_settings['google'] ||
-					'1' === $auth_settings['ldap']
+					( isset( $auth_settings['oauth2'] ) && '1' === $auth_settings['oauth2'] ) ||
+					( isset( $auth_settings['oidc'] ) && '1' === $auth_settings['oidc'] ) ||
+					( isset( $auth_settings['google'] ) && '1' === $auth_settings['google'] ) ||
+					( isset( $auth_settings['cas'] ) && '1' === $auth_settings['cas'] ) ||
+					( isset( $auth_settings['ldap'] ) && '1' === $auth_settings['ldap'] )
 				)
 			) {
 				// Edge case: if WordPress logins are disabled but the username/email
@@ -231,7 +255,10 @@ class Authentication extends Singleton {
 				// authentication).
 				if ( ! empty( $auth_settings['advanced_disable_wp_login_bypass_usernames'] ) ) {
 					$bypass_usernames = explode( "\n", str_replace( "\r", '', $auth_settings['advanced_disable_wp_login_bypass_usernames'] ) );
-					$bypass_users = get_users( array( 'login__in' => $bypass_usernames, 'count_total' => false ) );
+					$bypass_users     = get_users( array(
+						'login__in'   => $bypass_usernames,
+						'count_total' => false,
+					) );
 					foreach ( $bypass_users as $bypass_user ) {
 						if ( $bypass_user->user_login === $username || $bypass_user->user_email === $username ) {
 							return null;
@@ -270,12 +297,31 @@ class Authentication extends Singleton {
 
 		// Look for an existing WordPress account matching the externally
 		// authenticated user. Perform the match either by username or email.
-		if ( isset( $auth_settings['cas_link_on_username'] ) && 1 === intval( $auth_settings['cas_link_on_username'] ) ) {
+		$link_on_username = false;
+		if ( 'cas' === $authenticated_by ) {
+			// Check the specific CAS server's link_on_username setting.
+			$cas_server_id            = isset( $result['cas_server_id'] ) ? intval( $result['cas_server_id'] ) : 1;
+			$suffix                   = $cas_server_id > 1 ? '_' . $cas_server_id : '';
+			$cas_link_on_username_key = 'cas_link_on_username' . $suffix;
+			if ( isset( $auth_settings[ $cas_link_on_username_key ] ) && 1 === intval( $auth_settings[ $cas_link_on_username_key ] ) ) {
+				$link_on_username = true;
+			}
+		} elseif ( 'oidc' === $authenticated_by ) {
+			// Check the specific OIDC server's link_on_username setting.
+			$oidc_server_id            = isset( $result['oidc_server_id'] ) ? intval( $result['oidc_server_id'] ) : 1;
+			$suffix                    = $oidc_server_id > 1 ? '_' . $oidc_server_id : '';
+			$oidc_link_on_username_key = 'oidc_link_on_username' . $suffix;
+			if ( isset( $auth_settings[ $oidc_link_on_username_key ] ) && 1 === intval( $auth_settings[ $oidc_link_on_username_key ] ) ) {
+				$link_on_username = true;
+			}
+		}
+
+		if ( $link_on_username ) {
 			// Get the external user's WordPress account by username. This is less
 			// secure, but a user reported having an installation where a previous
 			// CAS plugin had created over 9000 WordPress accounts without email
 			// addresses. This option was created to support that case, and any
-			// other CAS servers where emails are not used as account identifiers.
+			// other CAS/OIDC servers where emails are not used as account identifiers.
 			$user = get_user_by( 'login', $result['username'] );
 		} else {
 			// Get the external user's WordPress account by email address. This is
@@ -289,23 +335,49 @@ class Authentication extends Singleton {
 			}
 		}
 
-		// We'll track how this user was authenticated in user meta.
-		if ( $user ) {
-			update_user_meta( $user->ID, 'authenticated_by', $authenticated_by );
+		// Always clean up OIDC session variables after authentication attempt,
+		// regardless of user lookup result. This prevents session pollution if OIDC
+		// authentication succeeds but user verification fails.
+		// Note: oidc_redirect_to is preserved here and cleaned up later in
+		// maybe_redirect_after_oidc_login() after it's used for the login redirect.
+		if ( 'oidc' === $authenticated_by && PHP_SESSION_ACTIVE === session_status() ) {
+			unset( $_SESSION['oidc_server_id'] );
 		}
 
 		// Check this external user's access against the access lists
 		// (pending, approved, blocked).
-		$result = Authorization::get_instance()->check_user_access( $user, $externally_authenticated_emails, $result );
+		$check_user_access_result = Authorization::get_instance()->check_user_access(
+			$user,
+			$externally_authenticated_emails,
+			$result
+		);
 
 		// Fail with message if there was an error creating/adding the user.
-		if ( is_wp_error( $result ) || 0 === $result ) {
-			return $result;
+		if ( is_wp_error( $check_user_access_result ) || 0 === $check_user_access_result ) {
+			// Clean up oidc_redirect_to if access check fails (redirect filter won't run).
+			if ( 'oidc' === $authenticated_by && PHP_SESSION_ACTIVE === session_status() ) {
+				unset( $_SESSION['oidc_redirect_to'] );
+			}
+
+			return $check_user_access_result;
 		}
 
 		// If we have a valid user from check_user_access(), log that user in.
-		if ( get_class( $result ) === 'WP_User' ) {
-			$user = $result;
+		if ( get_class( $check_user_access_result ) === 'WP_User' ) {
+			$user = $check_user_access_result;
+		}
+
+		// If this is an OIDC login, update OIDC user meta for the successfully
+		// logged in user.
+		if ( $user && 'oidc' === $authenticated_by ) {
+			// Always store server ID if present (needed to determine which OIDC server was used).
+			if ( isset( $result['oidc_server_id'] ) ) {
+				update_user_meta( $user->ID, 'oidc_server_id', intval( $result['oidc_server_id'] ) );
+			}
+			// Store ID token only if present and non-empty (needed for RP-initiated logout).
+			if ( ! empty( $result['oidc_id_token'] ) ) {
+				update_user_meta( $user->ID, 'oidc_id_token', $result['oidc_id_token'] );
+			}
 		}
 
 		// Integration: disable Cloudflare Turnstile verification from the
@@ -349,6 +421,12 @@ class Authentication extends Singleton {
 			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput
 			$_GET['id']       = $_SESSION['oauth2_server_id'] ?? 1;
 			$_GET['external'] = 'oauth2';
+		}
+
+		// If this is an OAuth2 login attempt and the id param is missing, default
+		// it to 1.
+		if ( ! empty( $_GET['external'] ) && 'oauth2' === $_GET['external'] && empty( $_GET['id'] ) ) {
+			$_GET['id'] = 1;
 		}
 
 		// phpcs:ignore WordPress.Security.NonceVerification
@@ -410,6 +488,22 @@ class Authentication extends Singleton {
 			return null;
 		}
 
+		// Build the redirectUri for the OAuth2 provider to redirect back to.
+		// Note: omit the id param if it is 1 (default server) for backwards
+		// compatibility with installations already configured before Authorizer
+		// supported multiple OAuth2 servers (so it doesn't break existing
+		// redirectUris authorized on the external service).
+		$redirect_uri = site_url( '/wp-login.php?external=oauth2' );
+		if ( $oauth2_server_id > 1 ) {
+			$redirect_uri .= '&id=' . $oauth2_server_id;
+		}
+		if ( 'azure' === $oauth2_provider ) {
+			// Microsoft Azure does not support querystrings in the redirectUri, so
+			// we have to use the base wp-login.php URL. We save parameters in the
+			// session instead (see below).
+			$redirect_uri = site_url( '/wp-login.php' );
+		}
+
 		// Authenticate with GitHub.
 		// See: https://github.com/thephpleague/oauth2-github.
 		if ( 'github' === $oauth2_provider ) {
@@ -419,7 +513,7 @@ class Authentication extends Singleton {
 			$provider = new \League\OAuth2\Client\Provider\Github( array(
 				'clientId'     => $oauth2_clientid,
 				'clientSecret' => $oauth2_clientsecret,
-				'redirectUri'  => site_url( '/wp-login.php?external=oauth2&id=' . $oauth2_server_id ),
+				'redirectUri'  => $redirect_uri,
 			) );
 
 			// If we don't have an authorization code, then get one.
@@ -522,7 +616,7 @@ class Authentication extends Singleton {
 				$provider = new \TheNetworg\OAuth2\Client\Provider\Azure( array(
 					'clientId'     => $oauth2_clientid,
 					'clientSecret' => $oauth2_clientsecret,
-					'redirectUri'  => site_url( '/wp-login.php' ),
+					'redirectUri'  => $redirect_uri,
 					'tenant'       => empty( $oauth2_tenant_id ) ? 'common' : $oauth2_tenant_id,
 				) );
 				// Use v2 API. Set to Azure::ENDPOINT_VERSION_1_0 to use v1 API.
@@ -658,7 +752,7 @@ class Authentication extends Singleton {
 			$provider = new \League\OAuth2\Client\Provider\GenericProvider( array(
 				'clientId'                => $oauth2_clientid,
 				'clientSecret'            => $oauth2_clientsecret,
-				'redirectUri'             => site_url( '/wp-login.php?external=oauth2&id=' . $oauth2_server_id ),
+				'redirectUri'             => $redirect_uri,
 				'urlAuthorize'            => $oauth2_url_authorize,
 				'urlAccessToken'          => $oauth2_url_token,
 				'urlResourceOwnerDetails' => $oauth2_url_resource,
@@ -841,7 +935,301 @@ class Authentication extends Singleton {
 			'authenticated_by'  => 'oauth2',
 			'oauth2_provider'   => $oauth2_provider,
 			'oauth2_attributes' => $attributes,
+			'oauth2_server_id'  => $oauth2_server_id,
 		);
+	}
+
+	/**
+	 * Validate this user's credentials against OIDC provider.
+	 *
+	 * @param  array $auth_settings Plugin settings.
+	 * @return array|WP_Error       Array containing email, authenticated_by, first_name,
+	 *                              last_name, and username strings for the successfully
+	 *                              authenticated user, or WP_Error() object on failure,
+	 *                              or null if not attempting an OIDC login.
+	 */
+	protected function custom_authenticate_oidc( $auth_settings ) {
+		// Move on if oidc hasn't been requested here or OIDC server ID is invalid.
+		if ( empty( $auth_settings['oidc_num_servers'] ) ) {
+			$auth_settings['oidc_num_servers'] = 1;
+		}
+
+		// Workaround: because some OIDC providers don't let us specify a querystring in a
+		// redirect_uri, we have to detect those redirects separately because we
+		// can't include external=oidc or id={oidc_server_id} in the URL.
+		// Instead, detect the absence of the `external` param, and the presence of
+		// `code` and `state` params (OIDC uses authorization code flow).
+		if ( empty( $_GET['external'] ) && ! empty( $_GET['code'] ) && ! empty( $_GET['state'] ) ) {
+			// Fetch the OIDC server id from the session variable created during the
+			// initial request.
+			if ( PHP_SESSION_ACTIVE !== session_status() ) {
+				session_start();
+			}
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+			$_GET['id']       = $_SESSION['oidc_server_id'] ?? 1;
+			$_GET['external'] = 'oidc';
+		}
+
+		// If this is an OIDC login attempt and the id param is missing, default
+		// it to 1.
+		if ( ! empty( $_GET['external'] ) && 'oidc' === $_GET['external'] && empty( $_GET['id'] ) ) {
+			$_GET['id'] = 1;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification
+		if ( empty( $_GET['external'] ) || 'oidc' !== $_GET['external'] || empty( $_GET['id'] ) || ! in_array( intval( $_GET['id'] ), range( 1, 20 ), true ) || intval( $_GET['id'] ) > intval( $auth_settings['oidc_num_servers'] ) ) {
+			return null;
+		}
+
+		// Get the OIDC server id (since multiple OIDC servers can be configured),
+		// and the relevant settings for that server.
+		// phpcs:ignore WordPress.Security.NonceVerification
+		$oidc_server_id              = empty( $_GET['id'] ) ? 1 : intval( $_GET['id'] );
+		$suffix                      = $oidc_server_id > 1 ? '_' . $oidc_server_id : '';
+		$oidc_issuer                 = $auth_settings[ 'oidc_issuer' . $suffix ] ?? '';
+		$oidc_client_id              = $auth_settings[ 'oidc_client_id' . $suffix ] ?? '';
+		$oidc_client_secret          = $auth_settings[ 'oidc_client_secret' . $suffix ] ?? '';
+		$oidc_scopes                 = $auth_settings[ 'oidc_scopes' . $suffix ] ?? 'openid email profile';
+		$oidc_prompt                 = $auth_settings[ 'oidc_prompt' . $suffix ] ?? '';
+		$oidc_login_hint             = $auth_settings[ 'oidc_login_hint' . $suffix ] ?? '';
+		$oidc_max_age                = $auth_settings[ 'oidc_max_age' . $suffix ] ?? '';
+		$oidc_attr_username          = $auth_settings[ 'oidc_attr_username' . $suffix ] ?? 'preferred_username';
+		$oidc_attr_email             = $auth_settings[ 'oidc_attr_email' . $suffix ] ?? 'email';
+		$oidc_attr_first_name        = $auth_settings[ 'oidc_attr_first_name' . $suffix ] ?? 'given_name';
+		$oidc_attr_last_name         = $auth_settings[ 'oidc_attr_last_name' . $suffix ] ?? 'family_name';
+		$oidc_require_verified_email = $auth_settings[ 'oidc_require_verified_email' . $suffix ] ?? '';
+		$oidc_link_on_username       = $auth_settings[ 'oidc_link_on_username' . $suffix ] ?? '';
+		$oidc_hosteddomain           = $auth_settings[ 'oidc_hosteddomain' . $suffix ] ?? '';
+
+		// Fetch the OIDC Client ID (allow overrides from filter or constant).
+		// Note: constant/filter overrides are only supported for a single OIDC server.
+		if ( 1 === $oidc_server_id && defined( 'AUTHORIZER_OIDC_CLIENT_ID' ) ) {
+			$oidc_client_id = \AUTHORIZER_OIDC_CLIENT_ID;
+		}
+		/**
+		 * Filters the OIDC Client ID used by Authorizer to authenticate.
+		 *
+		 * @since 3.11.0
+		 *
+		 * @param string $oidc_client_id  The stored OIDC Client ID.
+		 */
+		if ( 1 === $oidc_server_id ) {
+			$oidc_client_id = apply_filters( 'authorizer_oidc_client_id', $oidc_client_id );
+		}
+
+		// Fetch the OIDC Client Secret (allow overrides from filter or constant).
+		// Note: constant/filter overrides are only supported for a single OIDC server.
+		if ( 1 === $oidc_server_id && defined( 'AUTHORIZER_OIDC_CLIENT_SECRET' ) ) {
+			$oidc_client_secret = \AUTHORIZER_OIDC_CLIENT_SECRET;
+		}
+		/**
+		 * Filters the OIDC Client Secret used by Authorizer to authenticate.
+		 *
+		 * @since 3.11.0
+		 *
+		 * @param string $oidc_client_secret  The stored OIDC Client Secret.
+		 */
+		if ( 1 === $oidc_server_id ) {
+			$oidc_client_secret = apply_filters( 'authorizer_oidc_client_secret', $oidc_client_secret );
+		}
+
+		// Move on if required params aren't specified in settings.
+		if (
+			empty( $oidc_issuer ) ||
+			empty( $oidc_client_id ) ||
+			empty( $oidc_client_secret )
+		) {
+			return null;
+		}
+
+		// Build the redirectUri for the OIDC provider to redirect back to.
+		// Note: omit the id param if it is 1 (default server) for consistency with
+		// the CAS and OAuth2 implementations.
+		$redirect_uri = site_url( '/wp-login.php?external=oidc' );
+		if ( $oidc_server_id > 1 ) {
+			$redirect_uri .= '&id=' . $oidc_server_id;
+		}
+
+		// Start session for state/nonce/PKCE storage.
+		if ( PHP_SESSION_ACTIVE !== session_status() ) {
+			session_start();
+		}
+
+		// Save redirect_to parameter if present.
+		if ( ! empty( $_GET['redirect_to'] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification
+			$_SESSION['oidc_redirect_to'] = sanitize_url( wp_unslash( $_GET['redirect_to'] ) );
+		}
+
+		// Initialize jumbojett OIDC client.
+		try {
+			$oidc = new \Jumbojett\OpenIDConnectClient(
+				$oidc_issuer,
+				$oidc_client_id,
+				$oidc_client_secret
+			);
+
+			// Set redirect URL.
+			$oidc->setRedirectURL( $redirect_uri );
+
+			// Save the OIDC server id so we can restore it after a successful
+			// login (note: we can't add the id querystring param to the redirectUri
+			// param above because some providers won't match the approved URI set in their portal).
+			$_SESSION['oidc_server_id'] = $oidc_server_id;
+
+			// Enable PKCE with S256.
+			$oidc->setCodeChallengeMethod( 'S256' );
+
+			// Add scopes.
+			$scopes = array_filter( array_map( 'trim', explode( ' ', $oidc_scopes ) ) );
+			if ( empty( $scopes ) ) {
+				$scopes = array( 'openid', 'email', 'profile' );
+			}
+			$oidc->addScope( $scopes );
+
+			// Add optional parameters.
+			if ( ! empty( $oidc_prompt ) ) {
+				$oidc->addAuthParam( array( 'prompt' => $oidc_prompt ) );
+			}
+			if ( ! empty( $oidc_login_hint ) ) {
+				$oidc->addAuthParam( array( 'login_hint' => $oidc_login_hint ) );
+			}
+			if ( ! empty( $oidc_max_age ) ) {
+				$oidc->addAuthParam( array( 'max_age' => $oidc_max_age ) );
+			}
+
+			// Authenticate (library handles PKCE, nonce, state).
+			$oidc->authenticate();
+
+			// Get ID token for RP-initiated logout (will be stored in user meta after user is found).
+			$id_token = $oidc->getIdToken();
+
+			// Get user info from userinfo endpoint (if available).
+			// Convert stdClass object to array to match codebase pattern (like OAuth2).
+			$user_info = array();
+			try {
+				$user_info = (array) $oidc->requestUserInfo();
+			} catch ( \Exception $e ) {
+				// Userinfo endpoint may not be available or may fail, continue with ID token.
+			}
+
+			// Also get ID token payload (email is often in ID token).
+			$id_token_payload = array();
+			try {
+				$id_token_payload_obj = $oidc->getIdTokenPayload();
+				if ( $id_token_payload_obj ) {
+					$id_token_payload = (array) $id_token_payload_obj;
+				}
+			} catch ( \Exception $e ) {
+				// ID token payload unavailable.
+			}
+
+			// Merge ID token claims with userinfo (userinfo takes precedence).
+			$user_info = array_merge( $id_token_payload, $user_info );
+
+			// Extract email.
+			$email = '';
+			if ( ! empty( $oidc_attr_email ) && ! empty( $user_info[ $oidc_attr_email ] ) ) {
+				$email = Helper::lowercase( sanitize_email( $user_info[ $oidc_attr_email ] ) );
+			} elseif ( ! empty( $user_info['email'] ) ) {
+				$email = Helper::lowercase( sanitize_email( $user_info['email'] ) );
+			}
+
+			// Extract username.
+			$username = '';
+			if ( ! empty( $oidc_attr_username ) && ! empty( $user_info[ $oidc_attr_username ] ) ) {
+				$username = sanitize_user( $user_info[ $oidc_attr_username ] );
+			} elseif ( ! empty( $user_info['preferred_username'] ) ) {
+				$username = sanitize_user( $user_info['preferred_username'] );
+			} elseif ( ! empty( $user_info['sub'] ) ) {
+				$username = sanitize_user( $user_info['sub'] );
+			}
+
+			// If linking by username is enabled, email is optional.
+			// Otherwise, email is required.
+			if ( '1' !== $oidc_link_on_username ) {
+				if ( empty( $email ) ) {
+					// Clean up session variables before returning error.
+					\Authorizer\Options\External\Oidc::get_instance()->maybe_unset_oidc_session_vars();
+					return new \WP_Error( 'oidc_no_email', __( '<strong>ERROR</strong>: OIDC provider did not return an email address.', 'authorizer' ) );
+				}
+
+				// Enforce email verification if required.
+				if ( '1' === $oidc_require_verified_email ) {
+					if ( empty( $user_info['email_verified'] ) || true !== $user_info['email_verified'] ) {
+						// Clean up session variables before returning error.
+						\Authorizer\Options\External\Oidc::get_instance()->maybe_unset_oidc_session_vars();
+						return new \WP_Error( 'oidc_email_not_verified', __( '<strong>ERROR</strong>: Email address must be verified to log in.', 'authorizer' ) );
+					}
+				}
+
+				// Enforce hosted domain allowlist if configured.
+				if ( ! empty( $oidc_hosteddomain ) ) {
+					$allowed_domains = array_filter( array_map( 'trim', explode( "\n", str_replace( "\r", '', $oidc_hosteddomain ) ) ) );
+					$email_domain    = substr( strrchr( $email, '@' ), 1 );
+					if ( ! in_array( $email_domain, $allowed_domains, true ) ) {
+						// Clean up session variables before returning error.
+						\Authorizer\Options\External\Oidc::get_instance()->maybe_unset_oidc_session_vars();
+						return new \WP_Error( 'oidc_domain_not_allowed', __( '<strong>ERROR</strong>: Your email domain is not allowed to log in.', 'authorizer' ) );
+					}
+				}
+
+				// Fallback username to email username part if username is empty.
+				if ( empty( $username ) ) {
+					$username = sanitize_user( substr( $email, 0, strpos( $email, '@' ) ) );
+				}
+			} elseif ( empty( $username ) ) {
+				// When linking by username, username is required.
+				// Clean up session variables before returning error.
+				\Authorizer\Options\External\Oidc::get_instance()->maybe_unset_oidc_session_vars();
+				return new \WP_Error( 'oidc_no_username', __( '<strong>ERROR</strong>: OIDC provider did not return a username.', 'authorizer' ) );
+			}
+
+			// Extract first name.
+			$first_name = '';
+			if ( ! empty( $oidc_attr_first_name ) && ! empty( $user_info[ $oidc_attr_first_name ] ) ) {
+				$first_name = sanitize_text_field( $user_info[ $oidc_attr_first_name ] );
+			} elseif ( ! empty( $user_info['given_name'] ) ) {
+				$first_name = sanitize_text_field( $user_info['given_name'] );
+			}
+
+			// Extract last name.
+			$last_name = '';
+			if ( ! empty( $oidc_attr_last_name ) && ! empty( $user_info[ $oidc_attr_last_name ] ) ) {
+				$last_name = sanitize_text_field( $user_info[ $oidc_attr_last_name ] );
+			} elseif ( ! empty( $user_info['family_name'] ) ) {
+				$last_name = sanitize_text_field( $user_info['family_name'] );
+			}
+
+			return array(
+				'email'            => $email,
+				'username'         => $username,
+				'first_name'       => $first_name,
+				'last_name'        => $last_name,
+				'authenticated_by' => 'oidc',
+				'oidc_attributes'  => $user_info,
+				'oidc_server_id'   => $oidc_server_id,
+				'oidc_id_token'    => $id_token,
+			);
+		} catch ( \Exception $e ) {
+			// Clean up session variables on exception.
+			\Authorizer\Options\External\Oidc::get_instance()->maybe_unset_oidc_session_vars();
+
+			// Log the error to error_log.
+			error_log( __( 'OIDC authentication failed. Details:', 'authorizer' ) ); // phpcs:ignore
+			error_log( $e->getMessage() ); // phpcs:ignore
+
+			// Also log the error to the Simple History plugin (if it is active).
+			apply_filters(
+				'simple_history_log_warning',
+				__( 'OIDC authentication failed. Details:', 'authorizer' ),
+				array(
+					'error' => $e->getMessage(),
+				)
+			);
+
+			return new \WP_Error( 'oidc_error', __( '<strong>ERROR</strong>: OIDC authentication failed.', 'authorizer' ) . ' ' . esc_html( $e->getMessage() ) );
+		}
 	}
 
 	/**
@@ -864,7 +1252,7 @@ class Authentication extends Singleton {
 		if ( PHP_SESSION_ACTIVE !== session_status() ) {
 			session_start();
 		}
-		$token = array_key_exists( 'token', $_SESSION ) ? $_SESSION['token'] : null;
+		$token = empty( $_SESSION['token'] ) ? null : $_SESSION['token'];
 
 		// No token, so this is not a succesful Google login.
 		if ( empty( $token ) ) {
@@ -989,10 +1377,18 @@ class Authentication extends Singleton {
 		if ( empty( $auth_settings['cas_num_servers'] ) ) {
 			$auth_settings['cas_num_servers'] = 1;
 		}
+
+		// If this is a CAS login attempt and the id param is missing, default
+		// it to 1.
+		if ( ! empty( $_GET['external'] ) && 'cas' === $_GET['external'] && empty( $_GET['id'] ) ) {
+			$_GET['id'] = 1;
+		}
+
 		// phpcs:ignore WordPress.Security.NonceVerification
 		if ( empty( $_GET['external'] ) || 'cas' !== $_GET['external'] || empty( $_GET['id'] ) || ! in_array( intval( $_GET['id'] ), range( 1, 10 ), true ) || intval( $_GET['id'] ) > intval( $auth_settings['cas_num_servers'] ) ) {
 			return null;
 		}
+
 		// Get the CAS server id (since multiple CAS servers can be configured), and
 		// the relevant CAS settings for that server.
 		// phpcs:ignore WordPress.Security.NonceVerification
@@ -1148,6 +1544,7 @@ class Authentication extends Singleton {
 			'last_name'        => $last_name,
 			'authenticated_by' => 'cas',
 			'cas_attributes'   => $cas_attributes,
+			'cas_server_id'    => $cas_server_id,
 		);
 	}
 
@@ -1629,9 +2026,11 @@ class Authentication extends Singleton {
 	 *
 	 * Action: wp_logout
 	 *
+	 * @param int $user_id ID of the user that was logged out.
+	 *
 	 * @return void
 	 */
-	public function custom_logout() {
+	public function custom_logout( $user_id ) {
 		// Grab plugin settings.
 		$options       = Options::get_instance();
 		$auth_settings = $options->get_all( Helper::SINGLE_CONTEXT, 'allow override' );
@@ -1641,7 +2040,7 @@ class Authentication extends Singleton {
 
 		// If logged in to CAS, Log out of CAS.
 		if ( 'cas' === self::$authenticated_by && '1' === $auth_settings['cas'] ) {
-			if ( ! array_key_exists( 'PHPCAS_CLIENT', $GLOBALS ) || ! array_key_exists( 'phpCAS', $_SESSION ) ) {
+			if ( empty( $GLOBALS['PHPCAS_CLIENT'] ) || empty( $_SESSION['phpCAS'] ) ) {
 
 				/**
 				 * Get the CAS server protocol version (default to SAML 1.1).
@@ -1684,7 +2083,7 @@ class Authentication extends Singleton {
 		if ( PHP_SESSION_ACTIVE !== session_status() ) {
 			session_start();
 		}
-		if ( 'google' === self::$authenticated_by && array_key_exists( 'token', $_SESSION ) ) {
+		if ( 'google' === self::$authenticated_by && ! empty( $_SESSION['token'] ) ) {
 			$token = $_SESSION['token'];
 
 			// Fetch the Google Client ID (allow overrides from filter or constant).
@@ -1725,6 +2124,100 @@ class Authentication extends Singleton {
 
 			// Remove the credentials from the user's session.
 			unset( $_SESSION['token'] );
+		}
+
+		// If logged in via OIDC, perform RP-initiated logout if supported.
+		if ( 'oidc' === self::$authenticated_by && '1' === $auth_settings['oidc'] ) {
+			$id_token_hint  = get_user_meta( $user_id, 'oidc_id_token', true );
+			$oidc_server_id = get_user_meta( $user_id, 'oidc_server_id', true );
+			if ( empty( $oidc_server_id ) ) {
+				$oidc_server_id = 1;
+			}
+
+			// Get issuer and credentials for the server that was used.
+			$suffix             = $oidc_server_id > 1 ? '_' . $oidc_server_id : '';
+			$oidc_issuer        = $auth_settings[ 'oidc_issuer' . $suffix ] ?? '';
+			$oidc_client_id     = $auth_settings[ 'oidc_client_id' . $suffix ] ?? '';
+			$oidc_client_secret = $auth_settings[ 'oidc_client_secret' . $suffix ] ?? '';
+
+			// Fetch the OIDC Client ID (allow overrides from filter or constant).
+			// Note: constant/filter overrides are only supported for a single OIDC server.
+			if ( 1 === $oidc_server_id && defined( 'AUTHORIZER_OIDC_CLIENT_ID' ) ) {
+				$oidc_client_id = \AUTHORIZER_OIDC_CLIENT_ID;
+			}
+			/**
+			 * Filters the OIDC Client ID used by Authorizer to authenticate.
+			 *
+			 * @since 3.11.0
+			 *
+			 * @param string $oidc_client_id  The stored OIDC Client ID.
+			 */
+			if ( 1 === $oidc_server_id ) {
+				$oidc_client_id = apply_filters( 'authorizer_oidc_client_id', $oidc_client_id );
+			}
+
+			// Fetch the OIDC Client Secret (allow overrides from filter or constant).
+			// Note: constant/filter overrides are only supported for a single OIDC server.
+			if ( 1 === $oidc_server_id && defined( 'AUTHORIZER_OIDC_CLIENT_SECRET' ) ) {
+				$oidc_client_secret = \AUTHORIZER_OIDC_CLIENT_SECRET;
+			}
+			/**
+			 * Filters the OIDC Client Secret used by Authorizer to authenticate.
+			 *
+			 * @since 3.11.0
+			 *
+			 * @param string $oidc_client_secret  The stored OIDC Client Secret.
+			 */
+			if ( 1 === $oidc_server_id ) {
+				$oidc_client_secret = apply_filters( 'authorizer_oidc_client_secret', $oidc_client_secret );
+			}
+
+			if ( ! empty( $oidc_issuer ) && ! empty( $oidc_client_id ) && ! empty( $oidc_client_secret ) ) {
+				try {
+					// Initialize OIDC client (library handles discovery automatically).
+					$oidc = new \Jumbojett\OpenIDConnectClient(
+						$oidc_issuer,
+						$oidc_client_id,
+						$oidc_client_secret
+					);
+
+					// Determine redirect URL.
+					$redirect_to = site_url( '/' );
+					if ( ! empty( $_REQUEST['redirect_to'] ) && isset( $_REQUEST['_wpnonce'] ) && wp_verify_nonce( sanitize_key( $_REQUEST['_wpnonce'] ), 'log-out' ) ) {
+						$redirect_to = esc_url_raw( wp_unslash( $_REQUEST['redirect_to'] ) );
+					}
+
+					// Set session flag to prevent auto-login after logout redirect (only if auto-login is enabled).
+					// This survives the external redirect through the IDP and works regardless
+					// of where the IDP redirects back to (wp-login.php, wp-admin, /, etc.).
+					// Only needed if auto-login is enabled; if disabled, there's no auto-login to prevent.
+					if ( ! empty( $auth_settings['oidc_auto_login'] ) && in_array( intval( $auth_settings['oidc_auto_login'] ), range( 1, 20 ), true ) ) {
+						if ( PHP_SESSION_ACTIVE !== session_status() ) {
+							session_start();
+						}
+						$_SESSION['oidc_logged_out'] = true;
+					}
+
+					// Clean up user meta before redirect (library's signOut() will exit).
+					\Authorizer\Options\External\Oidc::get_instance()->delete_oidc_user_meta( $user_id );
+
+					// Use library's signOut() method (handles discovery, URL building, and redirect).
+					// Pass empty string if no ID token (library will still include it in params).
+					$oidc->signOut( $id_token_hint ?? '', $redirect_to );
+					// signOut() calls exit, so this line should never be reached.
+				} catch ( \Jumbojett\OpenIDConnectClientException $e ) {
+					// Provider doesn't support RP-initiated logout (no end_session_endpoint) or other error.
+					// Clean up and continue with normal WordPress logout.
+					\Authorizer\Options\External\Oidc::get_instance()->delete_oidc_user_meta( $user_id );
+				} catch ( \Exception $e ) {
+					// Fallback to local logout if RP-initiated logout fails.
+					// Clean up and continue with normal WordPress logout.
+					\Authorizer\Options\External\Oidc::get_instance()->delete_oidc_user_meta( $user_id );
+				}
+			} else {
+				// No OIDC issuer/credentials configured - clean up and continue with normal WordPress logout.
+				\Authorizer\Options\External\Oidc::get_instance()->delete_oidc_user_meta( $user_id );
+			}
 		}
 	}
 }

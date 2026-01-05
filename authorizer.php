@@ -3,8 +3,8 @@
  * Plugin Name:       Authorizer
  * Plugin URI:        https://github.com/uhm-coe/authorizer
  * Description:       Authorizer limits login attempts, restricts access to specified users, and authenticates against external sources (e.g., OAuth2, Google, LDAP, or CAS).
- * Version:           3.12.0
- * Requires at least: 4.9
+ * Version:           3.13.4
+ * Requires at least: 5.5
  * Requires PHP:      7.4
  * Author:            Paul Ryan <prar@hawaii.edu>
  * License:           GPL v2 or later
@@ -52,6 +52,7 @@ require_once __DIR__ . '/src/authorizer/options/external/class-oauth2.php';
 require_once __DIR__ . '/src/authorizer/options/external/class-google.php';
 require_once __DIR__ . '/src/authorizer/options/external/class-cas.php';
 require_once __DIR__ . '/src/authorizer/options/external/class-ldap.php';
+require_once __DIR__ . '/src/authorizer/options/external/class-oidc.php';
 
 require_once __DIR__ . '/src/authorizer/options/class-advanced.php';
 

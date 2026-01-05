@@ -219,7 +219,8 @@ function signInCallback( credentialResponse ) { // jshint ignore:line
 		$auth_settings = $options->get_all( Helper::SINGLE_CONTEXT, 'allow override' );
 		?>
 		<div id="auth-external-service-login">
-			<?php if ( '1' === $auth_settings['google'] ) : ?>
+			<?php /* Note: Google button must come first to avoid its container overlapping other buttons. */ ?>
+			<?php if ( isset( $auth_settings['google'] ) && '1' === $auth_settings['google'] ) : ?>
 				<script src="https://accounts.google.com/gsi/client" async defer></script>
 				<div id="g_id_onload"
 					data-use_fedcm_for_prompt="true"
@@ -241,7 +242,7 @@ function signInCallback( credentialResponse ) { // jshint ignore:line
 				<br>
 			<?php endif; ?>
 
-			<?php if ( '1' === $auth_settings['oauth2'] ) : ?>
+			<?php if ( isset( $auth_settings['oauth2'] ) && '1' === $auth_settings['oauth2'] ) : ?>
 				<p><a class="button button-primary button-external button-<?php echo esc_attr( $auth_settings['oauth2_provider'] ); ?>" href="<?php echo esc_attr( Helper::modify_current_url_for_external_login( 'oauth2' ) ); ?>">
 					<span class="dashicons dashicons-lock"></span>
 					<span class="label">
@@ -284,7 +285,50 @@ function signInCallback( credentialResponse ) { // jshint ignore:line
 				<?php endif; ?>
 			<?php endif; ?>
 
-			<?php if ( '1' === $auth_settings['cas'] ) : ?>
+			<?php if ( isset( $auth_settings['oidc'] ) && '1' === $auth_settings['oidc'] ) : ?>
+				<p><a class="button button-primary button-external button-oidc" href="<?php echo esc_attr( Helper::modify_current_url_for_external_login( 'oidc' ) ); ?>">
+					<span class="dashicons dashicons-lock"></span>
+					<span class="label">
+						<?php
+						echo esc_html(
+							sprintf(
+								/* TRANSLATORS: %s: Custom OIDC label from authorizer options */
+								__( 'Sign in with %s', 'authorizer' ),
+								$auth_settings['oidc_custom_label']
+							)
+						);
+						?>
+					</span>
+				</a></p>
+				<?php
+				if ( empty( $auth_settings['oidc_num_servers'] ) ) :
+					$auth_settings['oidc_num_servers'] = 1;
+				endif;
+				if ( $auth_settings['oidc_num_servers'] > 1 ) :
+					for ( $i = 2; $i <= $auth_settings['oidc_num_servers']; $i++ ) :
+						if ( empty( $auth_settings[ 'oidc_custom_label_' . $i ] ) ) :
+							continue;
+						endif;
+						?>
+						<p><a class="button button-primary button-external button-oidc" href="<?php echo esc_attr( Helper::modify_current_url_for_external_login( 'oidc', $i ) ); ?>">
+							<span class="dashicons dashicons-lock"></span>
+							<span class="label">
+								<?php
+								echo esc_html(
+									sprintf(
+										/* TRANSLATORS: %s: Custom OIDC label from authorizer options */
+										__( 'Sign in with %s', 'authorizer' ),
+										$auth_settings[ 'oidc_custom_label_' . $i ]
+									)
+								);
+								?>
+							</span>
+						</a></p>
+					<?php endfor; ?>
+				<?php endif; ?>
+			<?php endif; ?>
+
+			<?php if ( isset( $auth_settings['cas'] ) && '1' === $auth_settings['cas'] ) : ?>
 				<p><a class="button button-primary button-external button-cas" href="<?php echo esc_attr( Helper::modify_current_url_for_external_login( 'cas' ) ); ?>">
 					<span class="dashicons dashicons-lock"></span>
 					<span class="label">
@@ -327,7 +371,7 @@ function signInCallback( credentialResponse ) { // jshint ignore:line
 				<?php endif; ?>
 			<?php endif; ?>
 
-			<?php if ( ( isset( $auth_settings['advanced_hide_wp_login'] ) && '1' === $auth_settings['advanced_hide_wp_login'] && isset( $_SERVER['QUERY_STRING'] ) && false === strpos( $_SERVER['QUERY_STRING'], 'external=wordpress' ) ) || ( isset( $auth_settings['advanced_disable_wp_login'] ) && '1' === $auth_settings['advanced_disable_wp_login'] && '1' !== $auth_settings['ldap'] && ( '1' === $auth_settings['cas'] || '1' === $auth_settings['google'] ) && ( empty( $auth_settings['advanced_disable_wp_login_bypass_usernames'] ) || ! isset( $_SERVER['QUERY_STRING'] ) || false === strpos( $_SERVER['QUERY_STRING'], 'external=wordpress' ) ) ) ) : // phpcs:ignore WordPress.Security.ValidatedSanitizedInput ?>
+			<?php if ( ( isset( $auth_settings['advanced_hide_wp_login'] ) && '1' === $auth_settings['advanced_hide_wp_login'] && isset( $_SERVER['QUERY_STRING'] ) && false === strpos( $_SERVER['QUERY_STRING'], 'external=wordpress' ) ) || ( isset( $auth_settings['advanced_disable_wp_login'] ) && '1' === $auth_settings['advanced_disable_wp_login'] && '1' !== $auth_settings['ldap'] && ( ( isset( $auth_settings['cas'] ) && '1' === $auth_settings['cas'] ) || ( isset( $auth_settings['google'] ) && '1' === $auth_settings['google'] ) || ( isset( $auth_settings['oauth2'] ) && '1' === $auth_settings['oauth2'] ) || ( isset( $auth_settings['oidc'] ) && '1' === $auth_settings['oidc'] ) ) && ( empty( $auth_settings['advanced_disable_wp_login_bypass_usernames'] ) || ! isset( $_SERVER['QUERY_STRING'] ) || false === strpos( $_SERVER['QUERY_STRING'], 'external=wordpress' ) ) ) ) : // phpcs:ignore WordPress.Security.ValidatedSanitizedInput ?>
 				<style type="text/css">
 					body.login-action-login form {
 						padding-bottom: 8px;
@@ -341,7 +385,7 @@ function signInCallback( credentialResponse ) { // jshint ignore:line
 						display: none;
 					}
 				</style>
-			<?php elseif ( '1' === $auth_settings['cas'] || '1' === $auth_settings['google'] || '1' === $auth_settings['oauth2'] ) : ?>
+			<?php elseif ( ( isset( $auth_settings['cas'] ) && '1' === $auth_settings['cas'] ) || ( isset( $auth_settings['google'] ) && '1' === $auth_settings['google'] ) || ( isset( $auth_settings['oauth2'] ) && '1' === $auth_settings['oauth2'] ) || ( isset( $auth_settings['oidc'] ) && '1' === $auth_settings['oidc'] ) ) : ?>
 				<h3> &mdash; <?php esc_html_e( 'or', 'authorizer' ); ?> &mdash; </h3>
 			<?php endif; ?>
 		</div>
@@ -391,6 +435,7 @@ function signInCallback( credentialResponse ) { // jshint ignore:line
 			( ! array_key_exists( 'ldap', $auth_settings ) || '1' !== $auth_settings['ldap'] ) &&
 			( ! array_key_exists( 'google', $auth_settings ) || '1' !== $auth_settings['google'] ) &&
 			( ! array_key_exists( 'oauth2', $auth_settings ) || '1' !== $auth_settings['oauth2'] ) &&
+			( ! array_key_exists( 'oidc', $auth_settings ) || '1' !== $auth_settings['oidc'] ) &&
 			array_key_exists( 'advanced_hide_wp_login', $auth_settings ) && '1' === $auth_settings['advanced_hide_wp_login']
 		) {
 			wp_redirect( Helper::modify_current_url_for_external_login( 'cas', intval( $auth_settings['cas_auto_login'] ) ) ); // phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect
@@ -443,9 +488,68 @@ function signInCallback( credentialResponse ) { // jshint ignore:line
 			( ! array_key_exists( 'ldap', $auth_settings ) || '1' !== $auth_settings['ldap'] ) &&
 			( ! array_key_exists( 'google', $auth_settings ) || '1' !== $auth_settings['google'] ) &&
 			( ! array_key_exists( 'cas', $auth_settings ) || '1' !== $auth_settings['cas'] ) &&
+			( ! array_key_exists( 'oidc', $auth_settings ) || '1' !== $auth_settings['oidc'] ) &&
 			array_key_exists( 'advanced_hide_wp_login', $auth_settings ) && '1' === $auth_settings['advanced_hide_wp_login']
 		) {
 			wp_redirect( Helper::modify_current_url_for_external_login( 'oauth2', intval( $auth_settings['oauth2_auto_login'] ) ) ); // phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect
+			exit;
+		}
+
+		return $errors;
+	}
+
+
+	/**
+	 * Redirect to OIDC login if auto-login is enabled.
+	 *
+	 * @param  WP_Error $errors      WP_Error object (passed by reference).
+	 * @param  string   $redirect_to Redirect URL.
+	 * @return WP_Error              WP_Error object.
+	 */
+	public function wp_login_errors__maybe_redirect_to_oidc( $errors, $redirect_to ) {
+		// If the query string 'checkemail=confirm' is set, we do not want to automatically redirect to
+		// the OIDC login screen using 'external=oidc', and instead want to directly access the check email
+		// confirmation page.  So we will instead set the URL parameter 'external=wordpress' and redirect.
+		// This is to prevent issues when going through the normal WordPress password reset process.
+		if (
+			isset( $_REQUEST['checkemail'] ) && // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			'confirm' === $_REQUEST['checkemail'] && // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			isset( $_SERVER['QUERY_STRING'] ) &&
+			strpos( $_SERVER['QUERY_STRING'], 'external=wordpress' ) === false // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+		) {
+					wp_redirect( Helper::modify_current_url_for_external_login( 'wordpress' ) );  // phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect
+					exit;
+		}
+
+		// Grab plugin settings.
+		$options       = Options::get_instance();
+		$auth_settings = $options->get_all( Helper::SINGLE_CONTEXT, 'allow override' );
+
+		// Check whether we should redirect to OIDC.
+		if (
+			isset( $_SERVER['QUERY_STRING'] ) &&
+			strpos( $_SERVER['QUERY_STRING'], 'external=wordpress' ) === false && // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+			array_key_exists( 'oidc_auto_login', $auth_settings ) && in_array( intval( $auth_settings['oidc_auto_login'] ), range( 1, 20 ), true ) &&
+			array_key_exists( 'oidc', $auth_settings ) && '1' === $auth_settings['oidc'] &&
+			( ! array_key_exists( 'ldap', $auth_settings ) || '1' !== $auth_settings['ldap'] ) &&
+			( ! array_key_exists( 'google', $auth_settings ) || '1' !== $auth_settings['google'] ) &&
+			( ! array_key_exists( 'cas', $auth_settings ) || '1' !== $auth_settings['cas'] ) &&
+			( ! array_key_exists( 'oauth2', $auth_settings ) || '1' !== $auth_settings['oauth2'] ) &&
+			array_key_exists( 'advanced_hide_wp_login', $auth_settings ) && '1' === $auth_settings['advanced_hide_wp_login']
+		) {
+			// Skip auto-login if session flag is set (set during OIDC logout).
+			// This prevents auto-login after logout redirect, regardless of where IDP redirects to.
+			// Only check if auto-login would otherwise be triggered (avoids unnecessary session starts).
+			if ( PHP_SESSION_ACTIVE !== session_status() ) {
+				session_start();
+			}
+			if ( ! empty( $_SESSION['oidc_logged_out'] ) ) {
+				unset( $_SESSION['oidc_logged_out'] );
+				return $errors;
+			}
+
+			// Redirect to OIDC login.
+			wp_redirect( Helper::modify_current_url_for_external_login( 'oidc', intval( $auth_settings['oidc_auto_login'] ) ) ); // phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect
 			exit;
 		}
 
@@ -507,8 +611,8 @@ function signInCallback( credentialResponse ) { // jshint ignore:line
 			update_user_meta( $user->ID, 'auth_settings_advanced_lockouts_time_last_failed', time() );
 			update_user_meta( $user->ID, 'auth_settings_advanced_lockouts_failed_attempts', $num_attempts + 1 );
 		} else {
-			update_option( 'auth_settings_advanced_lockouts_time_last_failed', time() );
-			update_option( 'auth_settings_advanced_lockouts_failed_attempts', $num_attempts + 1 );
+			update_option( 'auth_settings_advanced_lockouts_time_last_failed', time(), false );
+			update_option( 'auth_settings_advanced_lockouts_failed_attempts', $num_attempts + 1, false );
 		}
 
 		// Log a lockout if we hit the configured limit (via Simple History plugin).
@@ -629,8 +733,11 @@ function signInCallback( credentialResponse ) { // jshint ignore:line
 	 */
 	public function show_advanced_login_error( $errors ) {
 		$error = get_option( 'auth_settings_advanced_login_error' );
-		delete_option( 'auth_settings_advanced_login_error' );
-		$errors = '    ' . $error . "<br />\n";
+		if ( $error && strlen( $error ) > 0 ) {
+			delete_option( 'auth_settings_advanced_login_error' );
+			$errors = '    ' . $error . "<br />\n";
+		}
+
 		return $errors;
 	}
 
@@ -662,6 +769,8 @@ function signInCallback( credentialResponse ) { // jshint ignore:line
 	 * them).
 	 *
 	 * Filter: lost_password_html_link
+	 *
+	 * @param string $html_link The HTML link for lost password.
 	 */
 	public function maybe_hide_lost_password_link( $html_link ) {
 		// Grab plugin settings.
@@ -698,6 +807,10 @@ function signInCallback( credentialResponse ) { // jshint ignore:line
 	 * them).
 	 *
 	 * Action: lost_password
+	 *
+	 * @param WP_Error $errors WP_Error object containing any errors generated by
+	 *                         using invalid credentials. Note that the error
+	 *                         object may not contain any errors.
 	 */
 	public function maybe_hide_lost_password_form( $errors ) {
 		// Grab plugin settings.
@@ -728,6 +841,9 @@ function signInCallback( credentialResponse ) { // jshint ignore:line
 	 * them).
 	 *
 	 * Filter: lostpassword_errors
+	 *
+	 * @param WP_Error $errors A WP_Error object containing any errors generated
+	 *                         by using invalid credentials.
 	 */
 	public function maybe_prevent_password_reset( $errors ) {
 		// Grab plugin settings.

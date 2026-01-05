@@ -501,6 +501,7 @@
 
 		// Hide External Service tabs if provider is unchecked.
 		$( '.nav-tab-wrapper .nav-tab-external_oauth2' ).toggle( $( '#auth_settings_oauth2' ).is( ':checked' ) );
+		$( '.nav-tab-wrapper .nav-tab-external_oidc' ).toggle( $( '#auth_settings_oidc' ).is( ':checked' ) );
 		$( '.nav-tab-wrapper .nav-tab-external_google' ).toggle( $( '#auth_settings_google' ).is( ':checked' ) );
 		$( '.nav-tab-wrapper .nav-tab-external_cas' ).toggle( $( '#auth_settings_cas' ).is( ':checked' ) );
 		$( '.nav-tab-wrapper .nav-tab-external_ldap' ).toggle( $( '#auth_settings_ldap' ).is( ':checked' ) );
@@ -579,6 +580,11 @@
 				action = 'azure' === $( this ).val() ? 'show' : 'hide';
 				animateOption( action, server.tenant_id );
 			});
+		});
+
+		// Event handler: Show/hide OIDC tab based on checkbox
+		$( 'input[name="auth_settings[oidc]"]' ).on( 'change', function() {
+			$( '.nav-tab-wrapper .nav-tab-external_oidc' ).toggle( $( this ).is( ':checked' ) );
 		});
 
 		// Event handler: Show/hide Google tab based on checkbox
@@ -671,7 +677,7 @@
 			} else if ( sessionStorage.getItem( 'tab' ) ) {
 				tab = sessionStorage.getItem( 'tab' );
 			}
-			if ( $.inArray( tab, [ 'access_lists', 'access_login', 'access_public', 'external', 'external_oauth2', 'external_google', 'external_cas', 'external_ldap', 'advanced' ] ) < 0 ) {
+			if ( $.inArray( tab, [ 'access_lists', 'access_login', 'access_public', 'external', 'external_oauth2', 'external_oidc', 'external_google', 'external_cas', 'external_ldap', 'advanced' ] ) < 0 ) {
 				tab = 'access_lists';
 			}
 			window.chooseTab( tab, animationSpeed );
@@ -1165,6 +1171,45 @@
 				params['oauth2_attr_first_name_' + oauth2_num_server] = $( '#auth_settings_oauth2_attr_first_name_' + oauth2_num_server ).val();
 				params['oauth2_attr_last_name_' + oauth2_num_server] = $( '#auth_settings_oauth2_attr_last_name_' + oauth2_num_server ).val();
 				params['oauth2_attr_update_on_login_' + oauth2_num_server] = $( '#auth_settings_oauth2_attr_update_on_login_' + oauth2_num_server ).val();
+			}
+		}
+
+		params.oidc = $( '#auth_settings_oidc' ).is( ':checked' ) ? '1' : '';
+		params.oidc_auto_login = $( '#auth_settings_oidc_auto_login' ).val();
+		params.oidc_num_servers = parseInt( $( '#auth_settings_oidc_num_servers' ).val() );
+		params.oidc_custom_label = $( '#auth_settings_oidc_custom_label' ).val();
+		params.oidc_issuer = $( '#auth_settings_oidc_issuer' ).val();
+		params.oidc_client_id = $( '#auth_settings_oidc_client_id' ).val();
+		params.oidc_client_secret = $( '#auth_settings_oidc_client_secret' ).val();
+		params.oidc_scopes = $( '#auth_settings_oidc_scopes' ).val();
+		params.oidc_prompt = $( '#auth_settings_oidc_prompt' ).val();
+		params.oidc_login_hint = $( '#auth_settings_oidc_login_hint' ).val();
+		params.oidc_max_age = $( '#auth_settings_oidc_max_age' ).val();
+		params.oidc_attr_username = $( '#auth_settings_oidc_attr_username' ).val();
+		params.oidc_attr_email = $( '#auth_settings_oidc_attr_email' ).val();
+		params.oidc_attr_first_name = $( '#auth_settings_oidc_attr_first_name' ).val();
+		params.oidc_attr_last_name = $( '#auth_settings_oidc_attr_last_name' ).val();
+		params.oidc_attr_update_on_login = $( '#auth_settings_oidc_attr_update_on_login' ).val();
+		params.oidc_require_verified_email = $( '#auth_settings_oidc_require_verified_email' ).is( ':checked' ) ? '1' : '';
+		params.oidc_link_on_username = $( '#auth_settings_oidc_link_on_username' ).is( ':checked' ) ? '1' : '';
+		params.oidc_hosteddomain = $( '#auth_settings_oidc_hosteddomain' ).val();
+		if ( params.oidc_num_servers > 1 ) {
+			for ( var oidc_num_server = 2; oidc_num_server <= params.oidc_num_servers && oidc_num_server <= 20; oidc_num_server++ ) {
+				params['oidc_custom_label_' + oidc_num_server] = $( '#auth_settings_oidc_custom_label_' + oidc_num_server ).val();
+				params['oidc_issuer_' + oidc_num_server] = $( '#auth_settings_oidc_issuer_' + oidc_num_server ).val();
+				params['oidc_client_id_' + oidc_num_server] = $( '#auth_settings_oidc_client_id_' + oidc_num_server ).val();
+				params['oidc_client_secret_' + oidc_num_server] = $( '#auth_settings_oidc_client_secret_' + oidc_num_server ).val();
+				params['oidc_scopes_' + oidc_num_server] = $( '#auth_settings_oidc_scopes_' + oidc_num_server ).val();
+				params['oidc_prompt_' + oidc_num_server] = $( '#auth_settings_oidc_prompt_' + oidc_num_server ).val();
+				params['oidc_login_hint_' + oidc_num_server] = $( '#auth_settings_oidc_login_hint_' + oidc_num_server ).val();
+				params['oidc_max_age_' + oidc_num_server] = $( '#auth_settings_oidc_max_age_' + oidc_num_server ).val();
+				params['oidc_attr_username_' + oidc_num_server] = $( '#auth_settings_oidc_attr_username_' + oidc_num_server ).val();
+				params['oidc_attr_email_' + oidc_num_server] = $( '#auth_settings_oidc_attr_email_' + oidc_num_server ).val();
+				params['oidc_attr_first_name_' + oidc_num_server] = $( '#auth_settings_oidc_attr_first_name_' + oidc_num_server ).val();
+				params['oidc_attr_last_name_' + oidc_num_server] = $( '#auth_settings_oidc_attr_last_name_' + oidc_num_server ).val();
+				params['oidc_attr_update_on_login_' + oidc_num_server] = $( '#auth_settings_oidc_attr_update_on_login_' + oidc_num_server ).val();
+				params['oidc_require_verified_email_' + oidc_num_server] = $( '#auth_settings_oidc_require_verified_email_' + oidc_num_server ).is( ':checked' ) ? '1' : '';
+				params['oidc_link_on_username_' + oidc_num_server] = $( '#auth_settings_oidc_link_on_username_' + oidc_num_server ).is( ':checked' ) ? '1' : '';
 			}
 		}
 

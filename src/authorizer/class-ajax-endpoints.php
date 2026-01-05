@@ -178,6 +178,25 @@ class Ajax_Endpoints extends Singleton {
 			'oauth2_attr_first_name',
 			'oauth2_attr_last_name',
 			'oauth2_attr_update_on_login',
+			'oidc',
+			'oidc_auto_login',
+			'oidc_num_servers',
+			'oidc_custom_label',
+			'oidc_issuer',
+			'oidc_client_id',
+			'oidc_client_secret',
+			'oidc_scopes',
+			'oidc_prompt',
+			'oidc_login_hint',
+			'oidc_max_age',
+			'oidc_attr_username',
+			'oidc_attr_email',
+			'oidc_attr_first_name',
+			'oidc_attr_last_name',
+			'oidc_attr_update_on_login',
+			'oidc_require_verified_email',
+			'oidc_link_on_username',
+			'oidc_hosteddomain',
 			'google',
 			'google_clientid',
 			'google_clientsecret',
@@ -237,6 +256,29 @@ class Ajax_Endpoints extends Singleton {
 					'oauth2_attr_first_name_' . $oauth2_num_server,
 					'oauth2_attr_last_name_' . $oauth2_num_server,
 					'oauth2_attr_update_on_login_' . $oauth2_num_server,
+				) );
+			}
+		}
+		if ( ! empty( $auth_multisite_settings['oidc_num_servers'] ) && intval( $auth_multisite_settings['oidc_num_servers'] ) > 1 ) {
+			// Add options if more than one OIDC server.
+			foreach ( range( 2, min( intval( $auth_multisite_settings['oidc_num_servers'] ), 20 ) ) as $oidc_num_server ) {
+				$allowed = array_merge( $allowed, array(
+					'oidc_custom_label_' . $oidc_num_server,
+					'oidc_issuer_' . $oidc_num_server,
+					'oidc_client_id_' . $oidc_num_server,
+					'oidc_client_secret_' . $oidc_num_server,
+					'oidc_scopes_' . $oidc_num_server,
+					'oidc_prompt_' . $oidc_num_server,
+					'oidc_login_hint_' . $oidc_num_server,
+					'oidc_max_age_' . $oidc_num_server,
+					'oidc_attr_username_' . $oidc_num_server,
+					'oidc_attr_email_' . $oidc_num_server,
+					'oidc_attr_first_name_' . $oidc_num_server,
+					'oidc_attr_last_name_' . $oidc_num_server,
+					'oidc_attr_update_on_login_' . $oidc_num_server,
+					'oidc_require_verified_email_' . $oidc_num_server,
+					'oidc_link_on_username_' . $oidc_num_server,
+					'oidc_hosteddomain_' . $oidc_num_server,
 				) );
 			}
 		}
@@ -498,7 +540,7 @@ class Ajax_Endpoints extends Singleton {
 				}
 			}
 			if ( $should_update_auth_settings_access_users_approved ) {
-				update_option( 'auth_settings_access_users_approved', $auth_settings_access_users_approved );
+				update_option( 'auth_settings_access_users_approved', $auth_settings_access_users_approved, false );
 			}
 		} elseif ( strpos( $meta_key, 'acf___' ) === 0 && class_exists( 'acf' ) ) {
 			// Update user's usermeta value for usermeta key stored in authorizer options.
@@ -550,6 +592,7 @@ class Ajax_Endpoints extends Singleton {
 			// Sanitize posted data.
 			$access_users_pending = array();
 			if ( isset( $_POST['access_users_pending'] ) && is_array( $_POST['access_users_pending'] ) ) {
+				// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 				$access_users_pending = $options->sanitize_update_auth_users( wp_unslash( $_POST['access_users_pending'] ) );
 			}
 
@@ -565,7 +608,7 @@ class Ajax_Endpoints extends Singleton {
 							$options->get( 'access_users_pending', Helper::SINGLE_CONTEXT )
 						);
 						array_push( $auth_settings_access_users_pending, $pending_user );
-						update_option( 'auth_settings_access_users_pending', $auth_settings_access_users_pending );
+						update_option( 'auth_settings_access_users_pending', $auth_settings_access_users_pending, false );
 					}
 				} elseif ( 'remove' === $pending_user['edit_action'] ) {
 
@@ -574,7 +617,7 @@ class Ajax_Endpoints extends Singleton {
 					foreach ( $auth_settings_access_users_pending as $key => $existing_user ) {
 						if ( 0 === strcasecmp( $pending_user['email'], $existing_user['email'] ) ) {
 							unset( $auth_settings_access_users_pending[ $key ] );
-							update_option( 'auth_settings_access_users_pending', $auth_settings_access_users_pending );
+							update_option( 'auth_settings_access_users_pending', $auth_settings_access_users_pending, false );
 							break;
 						}
 					}
@@ -587,6 +630,7 @@ class Ajax_Endpoints extends Singleton {
 			// Sanitize posted data.
 			$access_users_approved = array();
 			if ( isset( $_POST['access_users_approved'] ) && is_array( $_POST['access_users_approved'] ) ) {
+				// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 				$access_users_approved = $options->sanitize_update_auth_users( wp_unslash( $_POST['access_users_approved'] ) );
 			}
 
@@ -671,7 +715,7 @@ class Ajax_Endpoints extends Singleton {
 						);
 						$approved_user['date_added']         = wp_date( 'M Y' );
 						array_push( $auth_settings_access_users_approved, $approved_user );
-						update_option( 'auth_settings_access_users_approved', $auth_settings_access_users_approved );
+						update_option( 'auth_settings_access_users_approved', $auth_settings_access_users_approved, false );
 						// Edge case: if added user already exists in WordPress, make sure
 						// their role matches the one just set here when adding to the
 						// approved list. Note: this will also trigger a redundant role
@@ -741,7 +785,7 @@ class Ajax_Endpoints extends Singleton {
 									// approved list in the set_user_role action above. Remove
 									// them from the Approved Users list here.
 									unset( $auth_settings_access_users_approved[ $key ] );
-									update_option( 'auth_settings_access_users_approved', $auth_settings_access_users_approved );
+									update_option( 'auth_settings_access_users_approved', $auth_settings_access_users_approved, false );
 								}
 								break;
 							}
@@ -790,7 +834,7 @@ class Ajax_Endpoints extends Singleton {
 									break;
 								}
 							}
-							update_option( 'auth_settings_access_users_approved', $auth_settings_access_users_approved );
+							update_option( 'auth_settings_access_users_approved', $auth_settings_access_users_approved, false );
 						}
 					}
 				}
@@ -803,6 +847,7 @@ class Ajax_Endpoints extends Singleton {
 			$access_users_blocked = array();
 			if ( isset( $_POST['access_users_blocked'] ) && is_array( $_POST['access_users_blocked'] ) ) {
 				$access_users_blocked = $options->sanitize_update_auth_users(
+					// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 					wp_unslash( $_POST['access_users_blocked'] ),
 					array(
 						'allow_wildcard_email' => true,
@@ -829,7 +874,7 @@ class Ajax_Endpoints extends Singleton {
 						);
 						$blocked_user['date_added']         = wp_date( 'M Y' );
 						array_push( $auth_settings_access_users_blocked, $blocked_user );
-						update_option( 'auth_settings_access_users_blocked', $auth_settings_access_users_blocked );
+						update_option( 'auth_settings_access_users_blocked', $auth_settings_access_users_blocked, false );
 					} else {
 						$invalid_emails[] = $blocked_user['email'];
 					}
@@ -846,7 +891,7 @@ class Ajax_Endpoints extends Singleton {
 					foreach ( $auth_settings_access_users_blocked as $key => $existing_user ) {
 						if ( 0 === strcasecmp( $blocked_user['email'], $existing_user['email'] ) ) {
 							unset( $auth_settings_access_users_blocked[ $key ] );
-							update_option( 'auth_settings_access_users_blocked', $auth_settings_access_users_blocked );
+							update_option( 'auth_settings_access_users_blocked', $auth_settings_access_users_blocked, false );
 							break;
 						}
 					}
