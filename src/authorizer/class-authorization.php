@@ -1132,6 +1132,12 @@ class Authorization extends Singleton {
 		$custom_mappings_raw   = $options->get( 'oauth2_custom_field_mappings' . $suffix );
 		$custom_mappings       = $this->parse_field_mappings( $custom_mappings_raw );
 
+		// Get default WordPress field mappings.
+		$default_mappings = $this->get_default_wordpress_field_mappings();
+
+		// Merge mappings (custom mappings override defaults).
+		$all_mappings = array_merge( $default_mappings, $custom_mappings );
+
 		// Store each profile field as user meta.
 		foreach ( $profile_fields as $field_name => $field_value ) {
 			// Skip empty values.
@@ -1140,21 +1146,42 @@ class Authorization extends Singleton {
 			}
 
 			// Handle array values (like businessPhones, skills, interests).
+			$original_value = $field_value;
 			if ( is_array( $field_value ) ) {
 				$field_value = wp_json_encode( $field_value );
 			}
 
 			// Determine the WordPress user meta key.
-			if ( isset( $custom_mappings[ $field_name ] ) ) {
-				// Use custom mapping.
-				$meta_key = $custom_mappings[ $field_name ];
+			if ( isset( $all_mappings[ $field_name ] ) ) {
+				$meta_key = $all_mappings[ $field_name ];
+
+				// Check if this is a standard WordPress field that needs special handling.
+				if ( in_array( $meta_key, array( 'first_name', 'last_name', 'description', 'user_url' ), true ) ) {
+					// Update WordPress user table fields.
+					if ( 'description' === $meta_key ) {
+						wp_update_user(
+							array(
+								'ID'          => $user_id,
+								'description' => is_array( $original_value ) ? implode( ', ', $original_value ) : $original_value,
+							)
+						);
+					} elseif ( 'user_url' === $meta_key ) {
+						wp_update_user(
+							array(
+								'ID'       => $user_id,
+								'user_url' => is_array( $original_value ) ? '' : $original_value,
+							)
+						);
+					}
+					// first_name and last_name are handled separately in authorization flow.
+				}
+
+				// Always store in user meta as well for consistency.
+				update_user_meta( $user_id, $meta_key, $field_value );
 			} else {
 				// Use default oauth2_ prefix.
-				$meta_key = 'oauth2_' . $field_name;
+				update_user_meta( $user_id, 'oauth2_' . $field_name, $field_value );
 			}
-
-			// Store the field value.
-			update_user_meta( $user_id, $meta_key, $field_value );
 		}
 
 		// Store when fields were last synced.
@@ -1164,6 +1191,38 @@ class Authorization extends Singleton {
 		update_user_meta( $user_id, 'oauth2_server_id', $oauth2_server_id );
 
 		error_log( 'Authorizer: Successfully synced profile fields for user ' . $user_id ); // phpcs:ignore
+	}
+
+
+	/**
+	 * Get default mappings from MS365 fields to WordPress profile fields.
+	 *
+	 * @return array Associative array of default field mappings.
+	 */
+	private function get_default_wordpress_field_mappings() {
+		return array(
+			// WordPress core user fields.
+			'givenName'    => 'first_name',
+			'surname'      => 'last_name',
+			'aboutMe'      => 'description',
+			'mySite'       => 'user_url',
+
+			// Common profile meta fields.
+			'displayName'  => 'nickname',
+			'jobTitle'     => 'job_title',
+			'companyName'  => 'company',
+			'officeLocation' => 'office',
+			'mobilePhone'  => 'phone',
+			'city'         => 'billing_city',
+			'state'        => 'billing_state',
+			'country'      => 'billing_country',
+			'postalCode'   => 'billing_postcode',
+			'streetAddress' => 'billing_address_1',
+
+			// Keep oauth2_ prefix for these to avoid conflicts.
+			'mail'         => 'oauth2_email',
+			'userPrincipalName' => 'oauth2_upn',
+		);
 	}
 
 
