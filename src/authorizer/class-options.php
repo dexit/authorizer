@@ -1474,6 +1474,41 @@ class Options extends Singleton {
 			}
 		}
 
+		// Sanitize OAuth2 settings for all servers (1 through oauth2_num_servers).
+		$oauth2_num_servers = max( 1, min( 20, intval( $auth_settings['oauth2_num_servers'] ) ) );
+		foreach ( range( 1, $oauth2_num_servers ) as $oauth2_num_server ) {
+			$suffix = 1 === $oauth2_num_server ? '' : '_' . $oauth2_num_server;
+
+			// Sanitize Store OAuth2 access token (checkbox: value can only be '1' or empty string).
+			$auth_settings[ 'oauth2_store_access_token' . $suffix ] = array_key_exists( 'oauth2_store_access_token' . $suffix, $auth_settings ) && strlen( $auth_settings[ 'oauth2_store_access_token' . $suffix ] ) > 0 ? '1' : '';
+
+			// Sanitize Sync profile photo (checkbox: value can only be '1' or empty string).
+			$auth_settings[ 'oauth2_sync_profile_photo' . $suffix ] = array_key_exists( 'oauth2_sync_profile_photo' . $suffix, $auth_settings ) && strlen( $auth_settings[ 'oauth2_sync_profile_photo' . $suffix ] ) > 0 ? '1' : '';
+
+			// Sanitize Sync profile fields (checkbox: value can only be '1' or empty string).
+			$auth_settings[ 'oauth2_sync_profile_fields' . $suffix ] = array_key_exists( 'oauth2_sync_profile_fields' . $suffix, $auth_settings ) && strlen( $auth_settings[ 'oauth2_sync_profile_fields' . $suffix ] ) > 0 ? '1' : '';
+
+			// Sanitize Custom field mappings (textarea).
+			if ( array_key_exists( 'oauth2_custom_field_mappings' . $suffix, $auth_settings ) ) {
+				$auth_settings[ 'oauth2_custom_field_mappings' . $suffix ] = sanitize_textarea_field( $auth_settings[ 'oauth2_custom_field_mappings' . $suffix ] );
+			}
+
+			// Sanitize Default role (select: must be a valid WordPress role).
+			if ( array_key_exists( 'oauth2_default_role' . $suffix, $auth_settings ) ) {
+				$role = sanitize_text_field( $auth_settings[ 'oauth2_default_role' . $suffix ] );
+				// Verify role exists, otherwise use default.
+				if ( ! get_role( $role ) ) {
+					$role = get_option( 'default_role', 'subscriber' );
+				}
+				$auth_settings[ 'oauth2_default_role' . $suffix ] = $role;
+			}
+
+			// Sanitize Role mappings (textarea).
+			if ( array_key_exists( 'oauth2_role_mappings' . $suffix, $auth_settings ) ) {
+				$auth_settings[ 'oauth2_role_mappings' . $suffix ] = sanitize_textarea_field( $auth_settings[ 'oauth2_role_mappings' . $suffix ] );
+			}
+		}
+
 		// Make sure public pages is an empty array if it's empty.
 		// Note: this option doesn't exist in multisite options, so we first
 		// check to see if it exists.
@@ -1507,6 +1542,11 @@ class Options extends Singleton {
 		// Sanitize Sort users order (select: value can be 'asc', 'desc').
 		if ( ! isset( $auth_settings['advanced_users_sort_order'] ) || ! in_array( $auth_settings['advanced_users_sort_order'], array( 'asc', 'desc' ), true ) ) {
 			$auth_settings['advanced_users_sort_order'] = 'asc';
+		}
+
+		// Sanitize System log level (select: value can only be 'none', 'basic', 'detailed', or 'debug').
+		if ( ! isset( $auth_settings['system_log_level'] ) || ! in_array( $auth_settings['system_log_level'], array( 'none', 'basic', 'detailed', 'debug' ), true ) ) {
+			$auth_settings['system_log_level'] = 'basic';
 		}
 
 		// Sanitize Show Dashboard Widget (checkbox: value can only be '1' or empty string).
