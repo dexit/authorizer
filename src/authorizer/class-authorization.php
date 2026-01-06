@@ -1044,6 +1044,9 @@ class Authorization extends Singleton {
 			$this->sync_microsoft_profile_fields( $user->ID, $access_token );
 			$this->sync_microsoft_user_groups( $user->ID, $access_token );
 		}
+
+		// Apply role mappings based on MS365 profile data.
+		$this->apply_oauth2_role_mappings( $user->ID, $oauth2_server_id );
 	}
 
 
@@ -1405,5 +1408,197 @@ class Authorization extends Singleton {
 			),
 			$user_id
 		);
+	}
+
+
+	/**
+	 * Apply role mappings based on OAuth2/MS365 profile data.
+	 *
+	 * @param int $user_id           WordPress user ID.
+	 * @param int $oauth2_server_id  OAuth2 server ID.
+	 * @return void
+	 */
+	private function apply_oauth2_role_mappings( $user_id, $oauth2_server_id = 1 ) {
+		if ( empty( $user_id ) ) {
+			return;
+		}
+
+		$user = get_user_by( 'id', $user_id );
+		if ( ! $user ) {
+			return;
+		}
+
+		// Get settings.
+		$options = Options::get_instance();
+		$suffix  = 1 === intval( $oauth2_server_id ) ? '' : '_' . $oauth2_server_id;
+
+		// Get default role.
+		$default_role = $options->get( 'oauth2_default_role' . $suffix, Helper::SINGLE_CONTEXT );
+		if ( empty( $default_role ) ) {
+			$default_role = get_option( 'default_role', 'subscriber' );
+		}
+
+		// Get role mappings.
+		$mappings_raw = $options->get( 'oauth2_role_mappings' . $suffix, Helper::SINGLE_CONTEXT );
+		$mappings     = $this->parse_role_mappings( $mappings_raw );
+
+		// Get user data from meta.
+		$user_email  = $user->user_email;
+		$job_title   = get_user_meta( $user_id, 'oauth2_jobTitle', true );
+		if ( empty( $job_title ) ) {
+			$job_title = get_user_meta( $user_id, 'job_title', true );
+		}
+		$department  = get_user_meta( $user_id, 'oauth2_department', true );
+		$groups_json = get_user_meta( $user_id, 'oauth2_group_names', true );
+		$groups      = ! empty( $groups_json ) ? json_decode( $groups_json, true ) : array();
+
+		// Determine role based on mappings (first match wins).
+		$assigned_role = null;
+
+		// Priority 1: Email mappings.
+		if ( isset( $mappings['email'] ) && ! empty( $user_email ) ) {
+			foreach ( $mappings['email'] as $pattern => $role ) {
+				if ( $this->matches_pattern( $user_email, $pattern ) ) {
+					$assigned_role = $role;
+					break;
+				}
+			}
+		}
+
+		// Priority 2: Group mappings.
+		if ( is_null( $assigned_role ) && isset( $mappings['group'] ) && ! empty( $groups ) ) {
+			foreach ( $mappings['group'] as $group_pattern => $role ) {
+				foreach ( $groups as $group_name ) {
+					if ( $this->matches_pattern( $group_name, $group_pattern ) ) {
+						$assigned_role = $role;
+						break 2;
+					}
+				}
+			}
+		}
+
+		// Priority 3: Job title mappings.
+		if ( is_null( $assigned_role ) && isset( $mappings['jobtitle'] ) && ! empty( $job_title ) ) {
+			foreach ( $mappings['jobtitle'] as $pattern => $role ) {
+				if ( $this->matches_pattern( $job_title, $pattern ) ) {
+					$assigned_role = $role;
+					break;
+				}
+			}
+		}
+
+		// Priority 4: Department mappings.
+		if ( is_null( $assigned_role ) && isset( $mappings['department'] ) && ! empty( $department ) ) {
+			foreach ( $mappings['department'] as $pattern => $role ) {
+				if ( $this->matches_pattern( $department, $pattern ) ) {
+					$assigned_role = $role;
+					break;
+				}
+			}
+		}
+
+		// Priority 5: Default role.
+		if ( is_null( $assigned_role ) ) {
+			$assigned_role = $default_role;
+		}
+
+		// Apply role if it's valid and different from current role.
+		if ( ! empty( $assigned_role ) && ! in_array( $assigned_role, $user->roles, true ) ) {
+			$user->set_role( $assigned_role );
+
+			// Log role assignment.
+			System_Logs::get_instance()->log_event(
+				'role_assigned',
+				'success',
+				'User role assigned based on OAuth2 profile data',
+				array(
+					'assigned_role' => $assigned_role,
+					'email'         => $user_email,
+					'job_title'     => $job_title,
+					'department'    => $department,
+					'groups'        => $groups,
+				),
+				$user_id,
+				$user_email
+			);
+		}
+	}
+
+
+	/**
+	 * Parse role mappings from settings text.
+	 *
+	 * @param string $mappings_raw Raw mappings text.
+	 * @return array Parsed mappings grouped by type.
+	 */
+	private function parse_role_mappings( $mappings_raw ) {
+		$mappings = array();
+
+		if ( empty( $mappings_raw ) ) {
+			return $mappings;
+		}
+
+		$lines = explode( "\n", $mappings_raw );
+
+		foreach ( $lines as $line ) {
+			$line = trim( $line );
+
+			// Skip empty lines and comments.
+			if ( empty( $line ) || 0 === strpos( $line, '#' ) || 0 === strpos( $line, '//' ) ) {
+				continue;
+			}
+
+			// Parse format: type:pattern:role.
+			$parts = explode( ':', $line, 3 );
+			if ( count( $parts ) !== 3 ) {
+				continue;
+			}
+
+			$type    = strtolower( trim( $parts[0] ) );
+			$pattern = trim( $parts[1] );
+			$role    = trim( $parts[2] );
+
+			// Validate type.
+			if ( ! in_array( $type, array( 'email', 'jobtitle', 'department', 'group' ), true ) ) {
+				continue;
+			}
+
+			// Validate role exists in WordPress.
+			if ( ! get_role( $role ) ) {
+				continue;
+			}
+
+			// Store mapping.
+			if ( ! isset( $mappings[ $type ] ) ) {
+				$mappings[ $type ] = array();
+			}
+			$mappings[ $type ][ $pattern ] = $role;
+		}
+
+		return $mappings;
+	}
+
+
+	/**
+	 * Check if a value matches a pattern (supports wildcards).
+	 *
+	 * @param string $value   Value to check.
+	 * @param string $pattern Pattern (supports * and ? wildcards).
+	 * @return bool Whether value matches pattern.
+	 */
+	private function matches_pattern( $value, $pattern ) {
+		// Exact match.
+		if ( $value === $pattern ) {
+			return true;
+		}
+
+		// Convert wildcard pattern to regex.
+		// Escape special regex characters except * and ?.
+		$regex_pattern = preg_quote( $pattern, '/' );
+		// Convert * to .* and ? to .
+		$regex_pattern = str_replace( array( '\*', '\?' ), array( '.*', '.' ), $regex_pattern );
+
+		// Match (case-insensitive).
+		return (bool) preg_match( '/^' . $regex_pattern . '$/i', $value );
 	}
 }

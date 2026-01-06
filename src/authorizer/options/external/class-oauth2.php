@@ -701,6 +701,101 @@ class OAuth2 extends \Authorizer\Singleton {
 
 
 	/**
+	 * Settings print callback for OAuth2 default role.
+	 *
+	 * @param  string $args Args (e.g., multisite admin mode).
+	 * @return void
+	 */
+	public function print_select_oauth2_default_role( $args = '' ) {
+		$options = Options::get_instance();
+		$option  = $options->get( 'oauth2_default_role' . $this->get_suffix( $args ), Helper::get_context( $args ), 'allow override', 'print overlay' );
+
+		if ( is_null( $option ) ) {
+			$option = get_option( 'default_role', 'subscriber' );
+		}
+
+		?>
+		<select id="auth_settings_oauth2_default_role<?php echo esc_attr( $this->get_suffix( $args ) ); ?>" name="auth_settings[oauth2_default_role<?php echo esc_attr( $this->get_suffix( $args ) ); ?>]">
+			<?php wp_dropdown_roles( $option ); ?>
+		</select>
+		<p class="description">
+			<?php esc_html_e( 'Default WordPress role for new users logging in via OAuth2/MS365. This can be overridden by role mappings below.', 'authorizer' ); ?>
+		</p>
+		<?php
+	}
+
+
+	/**
+	 * Settings print callback for OAuth2 role mappings.
+	 *
+	 * @param  string $args Args (e.g., multisite admin mode).
+	 * @return void
+	 */
+	public function print_textarea_oauth2_role_mappings( $args = '' ) {
+		$options = Options::get_instance();
+		$option  = $options->get( 'oauth2_role_mappings' . $this->get_suffix( $args ), Helper::get_context( $args ), 'allow override', 'print overlay' );
+
+		if ( is_null( $option ) ) {
+			$option = '';
+		}
+
+		?>
+		<textarea
+			id="auth_settings_oauth2_role_mappings<?php echo esc_attr( $this->get_suffix( $args ) ); ?>"
+			name="auth_settings[oauth2_role_mappings<?php echo esc_attr( $this->get_suffix( $args ) ); ?>]"
+			rows="8"
+			cols="60"
+			style="font-family: monospace;"
+		><?php echo esc_textarea( $option ); ?></textarea>
+		<p class="description">
+			<strong><?php esc_html_e( 'Advanced Role Mapping', 'authorizer' ); ?></strong><br>
+			<?php esc_html_e( 'Map MS365 data to WordPress roles. One mapping per line. Format: type:pattern:role', 'authorizer' ); ?><br><br>
+
+			<strong><?php esc_html_e( 'Mapping Types:', 'authorizer' ); ?></strong><br>
+			• <code>email</code> - <?php esc_html_e( 'Match by email address or pattern', 'authorizer' ); ?><br>
+			• <code>jobtitle</code> - <?php esc_html_e( 'Match by MS365 job title', 'authorizer' ); ?><br>
+			• <code>department</code> - <?php esc_html_e( 'Match by MS365 department', 'authorizer' ); ?><br>
+			• <code>group</code> - <?php esc_html_e( 'Match by MS365 group membership', 'authorizer' ); ?><br><br>
+
+			<strong><?php esc_html_e( 'Examples:', 'authorizer' ); ?></strong><br>
+			<code>email:john.doe@example.com:administrator</code> - <?php esc_html_e( 'Specific email gets admin role', 'authorizer' ); ?><br>
+			<code>email:*@admin.example.com:administrator</code> - <?php esc_html_e( 'All emails in admin domain get admin role', 'authorizer' ); ?><br>
+			<code>jobtitle:Manager:editor</code> - <?php esc_html_e( 'Job title "Manager" gets editor role', 'authorizer' ); ?><br>
+			<code>jobtitle:*Developer*:author</code> - <?php esc_html_e( 'Job titles containing "Developer" get author role', 'authorizer' ); ?><br>
+			<code>department:IT:editor</code> - <?php esc_html_e( 'IT department gets editor role', 'authorizer' ); ?><br>
+			<code>group:Admins:administrator</code> - <?php esc_html_e( 'Members of "Admins" group get admin role', 'authorizer' ); ?><br><br>
+
+			<strong><?php esc_html_e( 'Wildcards:', 'authorizer' ); ?></strong><br>
+			• <code>*</code> - <?php esc_html_e( 'Matches any characters', 'authorizer' ); ?><br>
+			• <code>?</code> - <?php esc_html_e( 'Matches single character', 'authorizer' ); ?><br><br>
+
+			<strong><?php esc_html_e( 'Priority Order:', 'authorizer' ); ?></strong><br>
+			1. <?php esc_html_e( 'Email mappings (first match wins)', 'authorizer' ); ?><br>
+			2. <?php esc_html_e( 'Group mappings (first match wins)', 'authorizer' ); ?><br>
+			3. <?php esc_html_e( 'Job title mappings (first match wins)', 'authorizer' ); ?><br>
+			4. <?php esc_html_e( 'Department mappings (first match wins)', 'authorizer' ); ?><br>
+			5. <?php esc_html_e( 'Default role (set above)', 'authorizer' ); ?>
+		</p>
+		<?php
+	}
+
+
+	/**
+	 * Get server suffix for settings.
+	 *
+	 * @param  string $args Args (e.g., multisite admin mode).
+	 * @return string Server suffix.
+	 */
+	private function get_suffix( $args = '' ) {
+		if ( isset( $args['oauth2_num_server'] ) ) {
+			$oauth2_server_id = intval( $args['oauth2_num_server'] );
+			return 1 === $oauth2_server_id ? '' : '_' . $oauth2_server_id;
+		}
+		return '';
+	}
+
+
+	/**
 	 * Restore any redirect_to value saved during an Azure login (in the
 	 * `authenticate` hook). This is needed since the Azure portal needs an
 	 * approved URI to visit after logging in, and cannot have a variable

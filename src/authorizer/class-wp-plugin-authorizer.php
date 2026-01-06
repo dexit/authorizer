@@ -166,6 +166,9 @@ class WP_Plugin_Authorizer extends Singleton {
 		// AJAX: Search users for select2 dropdown.
 		add_action( 'wp_ajax_auth_settings_search_users', array( Ajax_Endpoints::get_instance(), 'ajax_auth_settings_search_users' ) );
 
+		// AJAX: Refresh Microsoft 365 profile data.
+		add_action( 'wp_ajax_authorizer_refresh_ms365_profile', array( Ajax_Endpoints::get_instance(), 'ajax_refresh_ms365_profile' ) );
+
 		// Add dashboard widget so instructors can add/edit users with access.
 		// Hint: For Multisite Network Admin Dashboard use wp_network_dashboard_setup instead of wp_dashboard_setup.
 		add_action( 'wp_dashboard_setup', array( Dashboard_Widget::get_instance(), 'add_dashboard_widgets' ) );

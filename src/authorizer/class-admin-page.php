@@ -724,6 +724,26 @@ class Admin_Page extends Singleton {
 					'oauth2_num_server' => $oauth2_num_server,
 				)
 			);
+			add_settings_field(
+				'auth_settings_oauth2_default_role' . $suffix,
+				$prefix . __( 'Default role for new users', 'authorizer' ),
+				array( Oauth2::get_instance(), 'print_select_oauth2_default_role' ),
+				'authorizer',
+				'auth_settings_external_oauth2',
+				array(
+					'oauth2_num_server' => $oauth2_num_server,
+				)
+			);
+			add_settings_field(
+				'auth_settings_oauth2_role_mappings' . $suffix,
+				$prefix . __( 'Advanced role mappings', 'authorizer' ),
+				array( Oauth2::get_instance(), 'print_textarea_oauth2_role_mappings' ),
+				'authorizer',
+				'auth_settings_external_oauth2',
+				array(
+					'oauth2_num_server' => $oauth2_num_server,
+				)
+			);
 		}
 
 		// Create External Service (OIDC) Settings section.

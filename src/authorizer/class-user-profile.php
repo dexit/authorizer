@@ -139,6 +139,58 @@ class User_Profile extends Singleton {
 			}
 			?>
 		</table>
+
+		<p>
+			<button type="button" id="auth-refresh-ms365-profile" class="button button-secondary" data-user-id="<?php echo esc_attr( $user->ID ); ?>">
+				<span class="dashicons dashicons-update" style="margin-top: 3px;"></span>
+				<?php esc_html_e( 'Refresh Microsoft 365 Profile Data', 'authorizer' ); ?>
+			</button>
+			<span id="auth-refresh-status" style="margin-left: 10px;"></span>
+		</p>
+
+		<script type="text/javascript">
+		jQuery(document).ready(function($) {
+			$('#auth-refresh-ms365-profile').on('click', function() {
+				var $button = $(this);
+				var $status = $('#auth-refresh-status');
+				var userId = $button.data('user-id');
+
+				// Disable button and show loading.
+				$button.prop('disabled', true);
+				$button.find('.dashicons').addClass('dashicons-update-spin');
+				$status.html('<span style="color: #999;"><?php esc_html_e( 'Refreshing profile data...', 'authorizer' ); ?></span>');
+
+				// Send AJAX request.
+				$.ajax({
+					url: ajaxurl,
+					type: 'POST',
+					data: {
+						action: 'authorizer_refresh_ms365_profile',
+						user_id: userId,
+						nonce: '<?php echo esc_js( wp_create_nonce( 'authorizer_refresh_profile_' . $user->ID ) ); ?>'
+					},
+					success: function(response) {
+						if (response.success) {
+							$status.html('<span style="color: #46b450;"><span class="dashicons dashicons-yes"></span> ' + response.data.message + '</span>');
+							// Reload page after 2 seconds to show updated data.
+							setTimeout(function() {
+								location.reload();
+							}, 2000);
+						} else {
+							$status.html('<span style="color: #dc3232;"><span class="dashicons dashicons-warning"></span> ' + response.data.message + '</span>');
+							$button.prop('disabled', false);
+							$button.find('.dashicons').removeClass('dashicons-update-spin');
+						}
+					},
+					error: function() {
+						$status.html('<span style="color: #dc3232;"><span class="dashicons dashicons-warning"></span> <?php esc_html_e( 'An error occurred. Please try again.', 'authorizer' ); ?></span>');
+						$button.prop('disabled', false);
+						$button.find('.dashicons').removeClass('dashicons-update-spin');
+					}
+				});
+			});
+		});
+		</script>
 		<?php
 	}
 
