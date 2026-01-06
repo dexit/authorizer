@@ -623,8 +623,9 @@ class Authentication extends Singleton {
 				$provider->defaultEndPointVersion = \TheNetworg\OAuth2\Client\Provider\Azure::ENDPOINT_VERSION_2_0;
 
 				$baseGraphUri    = $provider->getRootMicrosoftGraphUri( null );
-				// Request comprehensive permissions for profile, groups, and photo access.
-				$provider->scope = 'openid profile email offline_access ' . $baseGraphUri . '/User.Read ' . $baseGraphUri . '/User.ReadBasic.All ' . $baseGraphUri . '/Group.Read.All';
+				// Request user-delegated permissions (NO admin consent required).
+				// User.Read provides access to: /me (profile), /me/memberOf (groups), /me/photo.
+				$provider->scope = 'openid profile email offline_access ' . $baseGraphUri . '/User.Read';
 			} catch ( \Exception $e ) {
 				// Invalid configuration, so this in not a successful login. Show error
 				// message to user.

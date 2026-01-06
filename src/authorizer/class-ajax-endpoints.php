@@ -1022,4 +1022,115 @@ class Ajax_Endpoints extends Singleton {
 		wp_send_json( $response );
 		exit;
 	}
+
+
+	/**
+	 * Refresh Microsoft 365 profile data for a user.
+	 *
+	 * Action: wp_ajax_authorizer_refresh_ms365_profile
+	 *
+	 * @return void
+	 */
+	public function ajax_refresh_ms365_profile() {
+		// Verify nonce.
+		if ( ! isset( $_POST['nonce'] ) || ! isset( $_POST['user_id'] ) ) {
+			wp_send_json_error( array( 'message' => __( 'Invalid request.', 'authorizer' ) ) );
+		}
+
+		$user_id = intval( $_POST['user_id'] );
+		$nonce   = sanitize_text_field( wp_unslash( $_POST['nonce'] ) );
+
+		if ( ! wp_verify_nonce( $nonce, 'authorizer_refresh_profile_' . $user_id ) ) {
+			wp_send_json_error( array( 'message' => __( 'Security check failed.', 'authorizer' ) ) );
+		}
+
+		// Check permissions - only admins or the user themselves can refresh.
+		if ( ! current_user_can( 'edit_users' ) && get_current_user_id() !== $user_id ) {
+			wp_send_json_error( array( 'message' => __( 'You do not have permission to perform this action.', 'authorizer' ) ) );
+		}
+
+		// Get user.
+		$user = get_user_by( 'id', $user_id );
+		if ( ! $user ) {
+			wp_send_json_error( array( 'message' => __( 'User not found.', 'authorizer' ) ) );
+		}
+
+		// Check if user has OAuth2 authentication.
+		$authenticated_by = get_user_meta( $user_id, 'authenticated_by', true );
+		if ( 'oauth2' !== $authenticated_by ) {
+			wp_send_json_error( array( 'message' => __( 'This user is not authenticated via Microsoft 365.', 'authorizer' ) ) );
+		}
+
+		// Get stored access token.
+		$encrypted_token = get_user_meta( $user_id, 'oauth2_access_token', true );
+		if ( empty( $encrypted_token ) ) {
+			wp_send_json_error( array( 'message' => __( 'No access token found. Please log in again via Microsoft 365.', 'authorizer' ) ) );
+		}
+
+		// Decrypt token.
+		$access_token = Helper::decrypt_token( $encrypted_token );
+		if ( false === $access_token ) {
+			wp_send_json_error( array( 'message' => __( 'Failed to decrypt access token. Please log in again.', 'authorizer' ) ) );
+		}
+
+		// Get OAuth2 server ID.
+		$oauth2_server_id = get_user_meta( $user_id, 'oauth2_server_id', true );
+		if ( empty( $oauth2_server_id ) ) {
+			$oauth2_server_id = 1;
+		}
+		$suffix = 1 === intval( $oauth2_server_id ) ? '' : '_' . $oauth2_server_id;
+
+		// Get sync settings.
+		$options     = Options::get_instance();
+		$sync_photo  = $options->get( 'oauth2_sync_profile_photo' . $suffix );
+		$sync_fields = $options->get( 'oauth2_sync_profile_fields' . $suffix );
+
+		// Test token with a simple API call.
+		$test_response = wp_remote_get(
+			'https://graph.microsoft.com/v1.0/me',
+			array(
+				'headers' => array( 'Authorization' => 'Bearer ' . $access_token ),
+				'timeout' => 10,
+			)
+		);
+
+		if ( is_wp_error( $test_response ) || 200 !== wp_remote_retrieve_response_code( $test_response ) ) {
+			wp_send_json_error( array( 'message' => __( 'Access token is expired or invalid. Please log in again via Microsoft 365.', 'authorizer' ) ) );
+		}
+
+		// Create a temporary authorization object to use sync methods.
+		$authorization = Authorization::get_instance();
+
+		// Use reflection to call private methods (workaround since they're private).
+		$reflection = new \ReflectionClass( $authorization );
+
+		try {
+			// Sync photo.
+			if ( $sync_photo ) {
+				$method = $reflection->getMethod( 'sync_microsoft_profile_photo' );
+				$method->setAccessible( true );
+				$method->invoke( $authorization, $user_id, $access_token );
+			}
+
+			// Sync profile fields and groups.
+			if ( $sync_fields ) {
+				$method = $reflection->getMethod( 'sync_microsoft_profile_fields' );
+				$method->setAccessible( true );
+				$method->invoke( $authorization, $user_id, $access_token );
+
+				$method = $reflection->getMethod( 'sync_microsoft_user_groups' );
+				$method->setAccessible( true );
+				$method->invoke( $authorization, $user_id, $access_token );
+
+				// Apply role mappings.
+				$method = $reflection->getMethod( 'apply_oauth2_role_mappings' );
+				$method->setAccessible( true );
+				$method->invoke( $authorization, $user_id, $oauth2_server_id );
+			}
+
+			wp_send_json_success( array( 'message' => __( 'Profile data refreshed successfully!', 'authorizer' ) ) );
+		} catch ( \Exception $e ) {
+			wp_send_json_error( array( 'message' => sprintf( __( 'Error refreshing profile: %s', 'authorizer' ), $e->getMessage() ) ) );
+		}
+	}
 }
