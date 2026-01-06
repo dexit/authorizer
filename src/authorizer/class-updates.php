@@ -534,6 +534,16 @@ class Updates extends Singleton {
 			$needs_updating = true;
 		}
 
+		// Update: Create System Logs database table for tracking authentication events.
+		$update_if_older_than = 20260106;
+		if ( false === $auth_version || intval( $auth_version ) < $update_if_older_than ) {
+			// Create the system logs table.
+			System_Logs::get_instance()->create_table();
+			// Update version to reflect this change has been made.
+			$auth_version   = $update_if_older_than;
+			$needs_updating = true;
+		}
+
 		/* phpcs:ignore Squiz.PHP.CommentedOutCode.Found
 		// Update: TEMPLATE
 		$update_if_older_than = YYYYMMDD;

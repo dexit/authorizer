@@ -69,6 +69,10 @@ class WP_Plugin_Authorizer extends Singleton {
 		// Update the user meta with this user's failed login attempt.
 		add_action( 'wp_login_failed', array( Login_Form::get_instance(), 'update_login_failed_count' ) );
 
+		// Log login events.
+		add_action( 'wp_login', array( $this, 'log_login_success' ), 10, 2 );
+		add_action( 'wp_login_failed', array( $this, 'log_login_failure' ) );
+
 		// Add users who successfully login to the approved list.
 		add_action( 'wp_login', array( Sync_Userdata::get_instance(), 'ensure_wordpress_user_in_approved_list_on_login' ), 10, 2 );
 
@@ -313,6 +317,60 @@ class WP_Plugin_Authorizer extends Singleton {
 		}
 
 		return $args;
+	}
+
+
+	/**
+	 * Log successful login event.
+	 *
+	 * @param string  $user_login Username.
+	 * @param WP_User $user       WP_User object.
+	 * @return void
+	 */
+	public function log_login_success( $user_login, $user ) {
+		if ( empty( $user ) || ! is_a( $user, 'WP_User' ) ) {
+			return;
+		}
+
+		// Determine authentication method.
+		$auth_method      = 'wordpress';
+		$authenticated_by = get_user_meta( $user->ID, 'authenticated_by', true );
+		if ( ! empty( $authenticated_by ) ) {
+			$auth_method = $authenticated_by;
+		}
+
+		System_Logs::get_instance()->log_event(
+			'login_success',
+			'success',
+			'User logged in successfully',
+			array(
+				'username'    => $user_login,
+				'auth_method' => $auth_method,
+				'user_roles'  => $user->roles,
+			),
+			$user->ID,
+			$user->user_email
+		);
+	}
+
+
+	/**
+	 * Log failed login event.
+	 *
+	 * @param string $username Username or email attempted.
+	 * @return void
+	 */
+	public function log_login_failure( $username ) {
+		System_Logs::get_instance()->log_event(
+			'login_failure',
+			'failure',
+			'Login attempt failed',
+			array(
+				'username' => $username,
+			),
+			null,
+			$username
+		);
 	}
 
 
