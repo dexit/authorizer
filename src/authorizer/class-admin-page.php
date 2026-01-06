@@ -1195,6 +1195,14 @@ class Admin_Page extends Singleton {
 			'auth_settings_external_ldap'
 		);
 
+		// Create System Logs section.
+		add_settings_section(
+			'auth_settings_system_logs',
+			'',
+			array( System_Logs::get_instance(), 'print_section_info_system_logs' ),
+			'authorizer'
+		);
+
 		// Create Advanced Settings section.
 		add_settings_section(
 			'auth_settings_advanced',
@@ -1269,6 +1277,13 @@ class Admin_Page extends Singleton {
 			'auth_settings_advanced_users_sort_order',
 			__( 'Approved users sort order', 'authorizer' ),
 			array( Advanced::get_instance(), 'print_select_auth_advanced_users_sort_order' ),
+			'authorizer',
+			'auth_settings_advanced'
+		);
+		add_settings_field(
+			'auth_settings_system_log_level',
+			__( 'System log detail level', 'authorizer' ),
+			array( System_Logs::get_instance(), 'print_select_system_log_level' ),
 			'authorizer',
 			'auth_settings_advanced'
 		);

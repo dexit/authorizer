@@ -1007,8 +1007,30 @@ class Authorization extends Singleton {
 		$access_token = method_exists( $token, 'getToken' ) ? $token->getToken() : null;
 
 		if ( empty( $access_token ) ) {
+			// Log token acquisition failure.
+			System_Logs::get_instance()->log_event(
+				'token_acquired',
+				'failure',
+				'Failed to extract access token from OAuth2 token object',
+				array( 'provider' => isset( $user_data['oauth2_provider'] ) ? $user_data['oauth2_provider'] : 'unknown' ),
+				$user->ID,
+				$user->user_email
+			);
 			return;
 		}
+
+		// Log successful token acquisition.
+		System_Logs::get_instance()->log_event(
+			'token_acquired',
+			'success',
+			'OAuth2 access token acquired successfully',
+			array(
+				'provider'    => isset( $user_data['oauth2_provider'] ) ? $user_data['oauth2_provider'] : 'unknown',
+				'store_token' => $store_token,
+			),
+			$user->ID,
+			$user->user_email
+		);
 
 		// Check if profile photo sync is enabled.
 		$sync_photo = $options->get( 'oauth2_sync_profile_photo' . $suffix );
@@ -1078,6 +1100,13 @@ class Authorization extends Singleton {
 	private function sync_microsoft_profile_photo( $user_id, $access_token ) {
 		if ( empty( $user_id ) || empty( $access_token ) ) {
 			error_log( 'Authorizer: Cannot sync profile photo - missing user_id or access_token' ); // phpcs:ignore
+			System_Logs::get_instance()->log_event(
+				'photo_sync',
+				'error',
+				'Cannot sync profile photo - missing user_id or access_token',
+				array(),
+				$user_id
+			);
 			return;
 		}
 
@@ -1085,6 +1114,13 @@ class Authorization extends Singleton {
 		$photo = Helper::fetch_microsoft_graph_profile_photo( $access_token );
 		if ( false === $photo || empty( $photo['data'] ) ) {
 			error_log( 'Authorizer: Profile photo not available for user ' . $user_id ); // phpcs:ignore
+			System_Logs::get_instance()->log_event(
+				'photo_sync',
+				'failure',
+				'Profile photo not available from Microsoft Graph',
+				array(),
+				$user_id
+			);
 			return;
 		}
 
@@ -1094,8 +1130,25 @@ class Authorization extends Singleton {
 			// Store when photo was last synced.
 			update_user_meta( $user_id, 'oauth2_profile_photo_synced_at', time() );
 			error_log( 'Authorizer: Successfully synced profile photo for user ' . $user_id . ' (attachment ID: ' . $attachment_id . ')' ); // phpcs:ignore
+			System_Logs::get_instance()->log_event(
+				'photo_sync',
+				'success',
+				'Profile photo synced successfully',
+				array(
+					'attachment_id' => $attachment_id,
+					'photo_type'    => $photo['type'],
+				),
+				$user_id
+			);
 		} else {
 			error_log( 'Authorizer: Failed to save profile photo for user ' . $user_id ); // phpcs:ignore
+			System_Logs::get_instance()->log_event(
+				'photo_sync',
+				'error',
+				'Failed to save profile photo to WordPress',
+				array(),
+				$user_id
+			);
 		}
 	}
 
@@ -1110,6 +1163,13 @@ class Authorization extends Singleton {
 	private function sync_microsoft_profile_fields( $user_id, $access_token ) {
 		if ( empty( $user_id ) || empty( $access_token ) ) {
 			error_log( 'Authorizer: Cannot sync profile fields - missing user_id or access_token' ); // phpcs:ignore
+			System_Logs::get_instance()->log_event(
+				'profile_sync',
+				'error',
+				'Cannot sync profile fields - missing user_id or access_token',
+				array(),
+				$user_id
+			);
 			return;
 		}
 
@@ -1117,6 +1177,13 @@ class Authorization extends Singleton {
 		$profile_fields = Helper::fetch_microsoft_graph_profile_fields( $access_token );
 		if ( false === $profile_fields || ! is_array( $profile_fields ) ) {
 			error_log( 'Authorizer: Failed to fetch profile fields from MS Graph for user ' . $user_id ); // phpcs:ignore
+			System_Logs::get_instance()->log_event(
+				'profile_sync',
+				'failure',
+				'Failed to fetch profile fields from Microsoft Graph',
+				array(),
+				$user_id
+			);
 			return;
 		}
 
@@ -1191,6 +1258,20 @@ class Authorization extends Singleton {
 		update_user_meta( $user_id, 'oauth2_server_id', $oauth2_server_id );
 
 		error_log( 'Authorizer: Successfully synced profile fields for user ' . $user_id ); // phpcs:ignore
+
+		// Log successful profile sync.
+		System_Logs::get_instance()->log_event(
+			'profile_sync',
+			'success',
+			'Profile fields synced successfully',
+			array(
+				'fields_count'     => count( $profile_fields ),
+				'fields_synced'    => array_keys( $profile_fields ),
+				'custom_mappings'  => count( $custom_mappings ),
+				'default_mappings' => count( $default_mappings ),
+			),
+			$user_id
+		);
 	}
 
 
@@ -1275,12 +1356,26 @@ class Authorization extends Singleton {
 	 */
 	private function sync_microsoft_user_groups( $user_id, $access_token ) {
 		if ( empty( $user_id ) || empty( $access_token ) ) {
+			System_Logs::get_instance()->log_event(
+				'groups_sync',
+				'error',
+				'Cannot sync groups - missing user_id or access_token',
+				array(),
+				$user_id
+			);
 			return;
 		}
 
 		// Fetch groups from Microsoft Graph API.
 		$groups = Helper::fetch_microsoft_user_groups( $access_token );
 		if ( false === $groups || ! is_array( $groups ) ) {
+			System_Logs::get_instance()->log_event(
+				'groups_sync',
+				'failure',
+				'Failed to fetch groups from Microsoft Graph',
+				array(),
+				$user_id
+			);
 			return;
 		}
 
@@ -1298,5 +1393,17 @@ class Authorization extends Singleton {
 
 		// Store when groups were last synced.
 		update_user_meta( $user_id, 'oauth2_groups_synced_at', time() );
+
+		// Log successful groups sync.
+		System_Logs::get_instance()->log_event(
+			'groups_sync',
+			'success',
+			'Groups synced successfully',
+			array(
+				'groups_count' => count( $groups ),
+				'group_names'  => $group_names,
+			),
+			$user_id
+		);
 	}
 }
