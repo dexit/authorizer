@@ -543,32 +543,6 @@ class OAuth2 extends \Authorizer\Singleton {
 	 * @param  string $args Args (e.g., multisite admin mode).
 	 * @return void
 	 */
-	public function print_checkbox_oauth2_store_access_token( $args = '' ) {
-		// Get plugin option.
-		$options              = Options::get_instance();
-		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
-		$option               = 'oauth2_store_access_token' . $suffix;
-		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
-
-		// Print option elements.
-		?>
-		<input type="checkbox" id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" value="1"<?php checked( 1 === intval( $auth_settings_option ) ); ?> />
-		<label for="auth_settings_<?php echo esc_attr( $option ); ?>"><?php esc_html_e( 'Store OAuth2 access token in user meta', 'authorizer' ); ?></label>
-		<p class="description">
-			<?php esc_html_e( 'Enable this to store the OAuth2 access token (and refresh token if available) encrypted in the database. This allows other plugins to make API calls on behalf of the user.', 'authorizer' ); ?>
-			<br>
-			<small><?php esc_html_e( 'Note: Tokens are encrypted using WordPress authentication keys and removed on logout.', 'authorizer' ); ?></small>
-		</p>
-		<?php
-	}
-
-
-	/**
-	 * Settings print callback.
-	 *
-	 * @param  string $args Args (e.g., multisite admin mode).
-	 * @return void
-	 */
 	public function print_checkbox_oauth2_sync_profile_photo( $args = '' ) {
 		// Get plugin option.
 		$options              = Options::get_instance();

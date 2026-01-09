@@ -349,8 +349,10 @@ class Authorization extends Singleton {
 						update_user_meta( $user->ID, 'authenticated_by', $user_data['authenticated_by'] );
 					}
 
-					// Store OAuth2 token and sync profile data if enabled.
-					if ( $user && 'oauth2' === $user_data['authenticated_by'] && 'azure' === $user_data['oauth2_provider'] ) {
+					// Store OAuth2 token and sync profile data.
+					// Token storage is universal for all OAuth2 providers (Azure, GitHub, Generic).
+					// Profile sync (photo, fields, groups) remains Azure/MS365-specific.
+					if ( $user && 'oauth2' === $user_data['authenticated_by'] ) {
 						$this->handle_oauth2_token_and_profile_sync( $user, $user_data, $auth_settings );
 					}
 
@@ -438,8 +440,10 @@ class Authorization extends Singleton {
 						update_user_meta( $user->ID, 'last_name', $user_data['last_name'] );
 					}
 
-					// Store OAuth2 token and sync profile data if enabled (for existing users).
-					if ( $user && 'oauth2' === $user_data['authenticated_by'] && 'azure' === $user_data['oauth2_provider'] ) {
+					// Store OAuth2 token and sync profile data (for existing users).
+					// Token storage is universal for all OAuth2 providers (Azure, GitHub, Generic).
+					// Profile sync (photo, fields, groups) remains Azure/MS365-specific.
+					if ( $user && 'oauth2' === $user_data['authenticated_by'] ) {
 						$this->handle_oauth2_token_and_profile_sync( $user, $user_data, $auth_settings );
 					}
 				}
