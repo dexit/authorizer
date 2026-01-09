@@ -635,7 +635,13 @@ class OAuth2 extends \Authorizer\Singleton {
 
 		// Print option elements.
 		?>
-		<textarea id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" placeholder="" rows="10" style="width:100%; max-width:600px; font-family:monospace;"><?php echo esc_textarea( $auth_settings_option ); ?></textarea>
+		<textarea
+			id="auth_settings_<?php echo esc_attr( $option ); ?>"
+			name="auth_settings[<?php echo esc_attr( $option ); ?>]"
+			placeholder="# Custom field mappings (one per line)&#10;# Format: ms365_field=wp_field_name&#10;&#10;department=user_department&#10;skills=user_skills&#10;extensionAttribute1=cost_center"
+			rows="12"
+			style="width:100%; max-width:700px; font-family:monospace; font-size:13px; padding:10px; border:1px solid #8c8f94; border-radius:4px;"
+		><?php echo esc_textarea( $auth_settings_option ); ?></textarea>
 		<p class="description">
 			<?php esc_html_e( 'Map Microsoft 365 profile fields to WordPress user profile and meta fields. Enter one mapping per line in the format:', 'authorizer' ); ?>
 			<code>ms365_field=wp_field_name</code>
@@ -743,9 +749,9 @@ class OAuth2 extends \Authorizer\Singleton {
 		<textarea
 			id="auth_settings_oauth2_role_mappings<?php echo esc_attr( $this->get_suffix( $args ) ); ?>"
 			name="auth_settings[oauth2_role_mappings<?php echo esc_attr( $this->get_suffix( $args ) ); ?>]"
-			rows="8"
-			cols="60"
-			style="font-family: monospace;"
+			placeholder="# Role mappings (one per line)&#10;# Format: type:pattern:role&#10;&#10;email:*@admin.example.com:administrator&#10;jobtitle:Manager:editor&#10;group:Admins:administrator"
+			rows="10"
+			style="width:100%; max-width:700px; font-family:monospace; font-size:13px; padding:10px; border:1px solid #8c8f94; border-radius:4px;"
 		><?php echo esc_textarea( $option ); ?></textarea>
 		<p class="description">
 			<strong><?php esc_html_e( 'Advanced Role Mapping', 'authorizer' ); ?></strong><br>

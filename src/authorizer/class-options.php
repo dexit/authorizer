@@ -1479,9 +1479,6 @@ class Options extends Singleton {
 		foreach ( range( 1, $oauth2_num_servers ) as $oauth2_num_server ) {
 			$suffix = 1 === $oauth2_num_server ? '' : '_' . $oauth2_num_server;
 
-			// Sanitize Store OAuth2 access token (checkbox: value can only be '1' or empty string).
-			$auth_settings[ 'oauth2_store_access_token' . $suffix ] = array_key_exists( 'oauth2_store_access_token' . $suffix, $auth_settings ) && strlen( $auth_settings[ 'oauth2_store_access_token' . $suffix ] ) > 0 ? '1' : '';
-
 			// Sanitize Sync profile photo (checkbox: value can only be '1' or empty string).
 			$auth_settings[ 'oauth2_sync_profile_photo' . $suffix ] = array_key_exists( 'oauth2_sync_profile_photo' . $suffix, $auth_settings ) && strlen( $auth_settings[ 'oauth2_sync_profile_photo' . $suffix ] ) > 0 ? '1' : '';
 
