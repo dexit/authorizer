@@ -981,6 +981,7 @@ class Authorization extends Singleton {
 
 	/**
 	 * Handle OAuth2 token storage and profile synchronization for Azure/Microsoft 365.
+	 * CRITICAL: Store token FIRST, then queue MS Graph API calls for async execution.
 	 *
 	 * @param WP_User $user          WordPress user object.
 	 * @param array   $user_data     User data from OAuth2 provider.
@@ -996,11 +997,9 @@ class Authorization extends Singleton {
 		$oauth2_server_id = isset( $user_data['oauth2_server_id'] ) ? $user_data['oauth2_server_id'] : 1;
 		$suffix           = 1 === $oauth2_server_id ? '' : '_' . $oauth2_server_id;
 
-		// Check if token storage is enabled.
-		$store_token = $options->get( 'oauth2_store_access_token' . $suffix );
-		if ( $store_token ) {
-			$this->store_oauth2_token( $user->ID, $user_data['oauth2_token'] );
-		}
+		// STEP 1: ALWAYS store token FIRST (regardless of checkbox setting).
+		// This ensures the token is saved before any MS Graph API calls.
+		$this->store_oauth2_token( $user->ID, $user_data['oauth2_token'] );
 
 		// Get access token for API calls.
 		$token        = $user_data['oauth2_token'];
@@ -1025,28 +1024,49 @@ class Authorization extends Singleton {
 			'success',
 			'OAuth2 access token acquired successfully',
 			array(
-				'provider'    => isset( $user_data['oauth2_provider'] ) ? $user_data['oauth2_provider'] : 'unknown',
-				'store_token' => $store_token,
+				'provider' => isset( $user_data['oauth2_provider'] ) ? $user_data['oauth2_provider'] : 'unknown',
 			),
 			$user->ID,
 			$user->user_email
 		);
 
-		// Check if profile photo sync is enabled.
-		$sync_photo = $options->get( 'oauth2_sync_profile_photo' . $suffix );
-		if ( $sync_photo ) {
-			$this->sync_microsoft_profile_photo( $user->ID, $access_token );
-		}
+		// STEP 2: Queue MS Graph API data acquisition for async execution.
+		// This prevents blocking the login flow with external API calls.
+		$this->queue_microsoft_profile_sync( $user->ID, $access_token, $oauth2_server_id );
+	}
 
-		// Check if profile fields sync is enabled.
-		$sync_fields = $options->get( 'oauth2_sync_profile_fields' . $suffix );
-		if ( $sync_fields ) {
-			$this->sync_microsoft_profile_fields( $user->ID, $access_token );
-			$this->sync_microsoft_user_groups( $user->ID, $access_token );
-		}
 
-		// Apply role mappings based on MS365 profile data.
-		$this->apply_oauth2_role_mappings( $user->ID, $oauth2_server_id );
+	/**
+	 * Queue Microsoft profile data synchronization to run after login.
+	 * This uses WordPress shutdown hook to run after response is sent to user.
+	 *
+	 * @param int    $user_id         WordPress user ID.
+	 * @param string $access_token    OAuth2 access token.
+	 * @param int    $oauth2_server_id OAuth2 server ID.
+	 * @return void
+	 */
+	private function queue_microsoft_profile_sync( $user_id, $access_token, $oauth2_server_id = 1 ) {
+		$options = Options::get_instance();
+		$suffix  = 1 === $oauth2_server_id ? '' : '_' . $oauth2_server_id;
+
+		// Queue profile sync to run on shutdown (after login response sent).
+		add_action( 'shutdown', function() use ( $user_id, $access_token, $oauth2_server_id, $suffix, $options ) {
+			// Check if profile photo sync is enabled.
+			$sync_photo = $options->get( 'oauth2_sync_profile_photo' . $suffix );
+			if ( $sync_photo ) {
+				$this->sync_microsoft_profile_photo( $user_id, $access_token );
+			}
+
+			// Check if profile fields sync is enabled.
+			$sync_fields = $options->get( 'oauth2_sync_profile_fields' . $suffix );
+			if ( $sync_fields ) {
+				$this->sync_microsoft_profile_fields( $user_id, $access_token );
+				$this->sync_microsoft_user_groups( $user_id, $access_token );
+			}
+
+			// Apply role mappings based on MS365 profile data.
+			$this->apply_oauth2_role_mappings( $user_id, $oauth2_server_id );
+		}, 999 );
 	}
 
 

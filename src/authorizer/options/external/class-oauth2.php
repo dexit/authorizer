@@ -583,7 +583,7 @@ class OAuth2 extends \Authorizer\Singleton {
 		<p class="description">
 			<?php esc_html_e( 'Enable this to download the user\'s profile photo from Microsoft 365 and set it as their WordPress avatar.', 'authorizer' ); ?>
 			<br>
-			<small><?php esc_html_e( 'Note: This feature only works with Microsoft Azure OAuth2 provider and requires the "Store OAuth2 access token" option to be enabled.', 'authorizer' ); ?></small>
+			<small><?php esc_html_e( 'Note: OAuth2 access tokens are automatically stored encrypted in the database for MS Graph API calls. Photo is synced after login and can be manually refreshed from the user profile page.', 'authorizer' ); ?></small>
 		</p>
 		<?php
 	}
@@ -609,7 +609,7 @@ class OAuth2 extends \Authorizer\Singleton {
 		<p class="description">
 			<?php esc_html_e( 'Enable this to sync additional profile data from Microsoft 365 such as job title, department, phone number, office location, skills, birthday, extension attributes, and more.', 'authorizer' ); ?>
 			<br>
-			<small><?php esc_html_e( 'Note: Fields are stored as WordPress user meta with "oauth2_" prefix (e.g., oauth2_jobTitle, oauth2_department, oauth2_skills). Requires "Store OAuth2 access token" to be enabled.', 'authorizer' ); ?></small>
+			<small><?php esc_html_e( 'Fields are automatically synced after login using MS Graph API. You can customize field mappings below or use the default mapping to WordPress profile fields.', 'authorizer' ); ?></small>
 		</p>
 		<?php
 	}
