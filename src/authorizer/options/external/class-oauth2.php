@@ -543,32 +543,6 @@ class OAuth2 extends \Authorizer\Singleton {
 	 * @param  string $args Args (e.g., multisite admin mode).
 	 * @return void
 	 */
-	public function print_checkbox_oauth2_store_access_token( $args = '' ) {
-		// Get plugin option.
-		$options              = Options::get_instance();
-		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
-		$option               = 'oauth2_store_access_token' . $suffix;
-		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
-
-		// Print option elements.
-		?>
-		<input type="checkbox" id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" value="1"<?php checked( 1 === intval( $auth_settings_option ) ); ?> />
-		<label for="auth_settings_<?php echo esc_attr( $option ); ?>"><?php esc_html_e( 'Store OAuth2 access token in user meta', 'authorizer' ); ?></label>
-		<p class="description">
-			<?php esc_html_e( 'Enable this to store the OAuth2 access token (and refresh token if available) encrypted in the database. This allows other plugins to make API calls on behalf of the user.', 'authorizer' ); ?>
-			<br>
-			<small><?php esc_html_e( 'Note: Tokens are encrypted using WordPress authentication keys and removed on logout.', 'authorizer' ); ?></small>
-		</p>
-		<?php
-	}
-
-
-	/**
-	 * Settings print callback.
-	 *
-	 * @param  string $args Args (e.g., multisite admin mode).
-	 * @return void
-	 */
 	public function print_checkbox_oauth2_sync_profile_photo( $args = '' ) {
 		// Get plugin option.
 		$options              = Options::get_instance();
@@ -583,7 +557,7 @@ class OAuth2 extends \Authorizer\Singleton {
 		<p class="description">
 			<?php esc_html_e( 'Enable this to download the user\'s profile photo from Microsoft 365 and set it as their WordPress avatar.', 'authorizer' ); ?>
 			<br>
-			<small><?php esc_html_e( 'Note: This feature only works with Microsoft Azure OAuth2 provider and requires the "Store OAuth2 access token" option to be enabled.', 'authorizer' ); ?></small>
+			<small><?php esc_html_e( 'Note: OAuth2 access tokens are automatically stored encrypted in the database for MS Graph API calls. Photo is synced after login and can be manually refreshed from the user profile page.', 'authorizer' ); ?></small>
 		</p>
 		<?php
 	}
@@ -609,7 +583,7 @@ class OAuth2 extends \Authorizer\Singleton {
 		<p class="description">
 			<?php esc_html_e( 'Enable this to sync additional profile data from Microsoft 365 such as job title, department, phone number, office location, skills, birthday, extension attributes, and more.', 'authorizer' ); ?>
 			<br>
-			<small><?php esc_html_e( 'Note: Fields are stored as WordPress user meta with "oauth2_" prefix (e.g., oauth2_jobTitle, oauth2_department, oauth2_skills). Requires "Store OAuth2 access token" to be enabled.', 'authorizer' ); ?></small>
+			<small><?php esc_html_e( 'Fields are automatically synced after login using MS Graph API. You can customize field mappings below or use the default mapping to WordPress profile fields.', 'authorizer' ); ?></small>
 		</p>
 		<?php
 	}
@@ -635,7 +609,13 @@ class OAuth2 extends \Authorizer\Singleton {
 
 		// Print option elements.
 		?>
-		<textarea id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" placeholder="" rows="10" style="width:100%; max-width:600px; font-family:monospace;"><?php echo esc_textarea( $auth_settings_option ); ?></textarea>
+		<textarea
+			id="auth_settings_<?php echo esc_attr( $option ); ?>"
+			name="auth_settings[<?php echo esc_attr( $option ); ?>]"
+			placeholder="# Custom field mappings (one per line)&#10;# Format: ms365_field=wp_field_name&#10;&#10;department=user_department&#10;skills=user_skills&#10;extensionAttribute1=cost_center"
+			rows="12"
+			style="width:100%; max-width:700px; font-family:monospace; font-size:13px; padding:10px; border:1px solid #8c8f94; border-radius:4px;"
+		><?php echo esc_textarea( $auth_settings_option ); ?></textarea>
 		<p class="description">
 			<?php esc_html_e( 'Map Microsoft 365 profile fields to WordPress user profile and meta fields. Enter one mapping per line in the format:', 'authorizer' ); ?>
 			<code>ms365_field=wp_field_name</code>
@@ -743,9 +723,9 @@ class OAuth2 extends \Authorizer\Singleton {
 		<textarea
 			id="auth_settings_oauth2_role_mappings<?php echo esc_attr( $this->get_suffix( $args ) ); ?>"
 			name="auth_settings[oauth2_role_mappings<?php echo esc_attr( $this->get_suffix( $args ) ); ?>]"
-			rows="8"
-			cols="60"
-			style="font-family: monospace;"
+			placeholder="# Role mappings (one per line)&#10;# Format: type:pattern:role&#10;&#10;email:*@admin.example.com:administrator&#10;jobtitle:Manager:editor&#10;group:Admins:administrator"
+			rows="10"
+			style="width:100%; max-width:700px; font-family:monospace; font-size:13px; padding:10px; border:1px solid #8c8f94; border-radius:4px;"
 		><?php echo esc_textarea( $option ); ?></textarea>
 		<p class="description">
 			<strong><?php esc_html_e( 'Advanced Role Mapping', 'authorizer' ); ?></strong><br>

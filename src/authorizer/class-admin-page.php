@@ -685,16 +685,6 @@ class Admin_Page extends Singleton {
 				)
 			);
 			add_settings_field(
-				'auth_settings_oauth2_store_access_token' . $suffix,
-				$prefix . __( 'Store access token', 'authorizer' ),
-				array( Oauth2::get_instance(), 'print_checkbox_oauth2_store_access_token' ),
-				'authorizer',
-				'auth_settings_external_oauth2',
-				array(
-					'oauth2_num_server' => $oauth2_num_server,
-				)
-			);
-			add_settings_field(
 				'auth_settings_oauth2_sync_profile_photo' . $suffix,
 				$prefix . __( 'Sync profile photo', 'authorizer' ),
 				array( Oauth2::get_instance(), 'print_checkbox_oauth2_sync_profile_photo' ),
@@ -1215,13 +1205,8 @@ class Admin_Page extends Singleton {
 			'auth_settings_external_ldap'
 		);
 
-		// Create System Logs section.
-		add_settings_section(
-			'auth_settings_system_logs',
-			'',
-			array( System_Logs::get_instance(), 'print_section_info_system_logs' ),
-			'authorizer'
-		);
+		// System Logs is NOT a settings section - it's a read-only display rendered separately.
+		// Registering it as a settings section breaks form submission due to nested forms.
 
 		// Create Advanced Settings section.
 		add_settings_section(
@@ -1343,6 +1328,20 @@ class Admin_Page extends Singleton {
 				submit_button();
 				?>
 			</form>
+
+			<?php
+			// Render System Logs section OUTSIDE the form to prevent nested form issues.
+			$current_tab = isset( $_GET['tab'] ) ? sanitize_text_field( wp_unslash( $_GET['tab'] ) ) : ''; // phpcs:ignore
+			if ( 'system_logs' === $current_tab ) {
+				?>
+				<div id="section_info_system_logs" class="section_info" style="margin-top: 20px;">
+					<h2><?php esc_html_e( 'System Logs', 'authorizer' ); ?></h2>
+					<p><?php esc_html_e( 'View login activity and authentication events. Configure log detail level in Advanced settings.', 'authorizer' ); ?></p>
+					<?php System_Logs::get_instance()->render_logs_table(); ?>
+				</div>
+				<?php
+			}
+			?>
 		</div>
 		<?php
 	}
