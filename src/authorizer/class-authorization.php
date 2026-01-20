@@ -1022,13 +1022,23 @@ class Authorization extends Singleton {
 			return;
 		}
 
-		// Log successful token acquisition.
+		// Get token details for logging.
+		$refresh_token = method_exists( $token, 'getRefreshToken' ) ? $token->getRefreshToken() : null;
+		$expires       = method_exists( $token, 'getExpires' ) ? $token->getExpires() : null;
+		$has_refresh   = ! empty( $refresh_token );
+		$expires_in    = $expires ? ( $expires - time() ) : 0;
+
+		// Log successful token acquisition with details.
 		System_Logs::get_instance()->log_event(
 			'token_acquired',
 			'success',
-			'OAuth2 access token acquired successfully',
+			'OAuth2 access token acquired successfully for MS Graph API requests',
 			array(
-				'provider' => isset( $user_data['oauth2_provider'] ) ? $user_data['oauth2_provider'] : 'unknown',
+				'provider'      => isset( $user_data['oauth2_provider'] ) ? $user_data['oauth2_provider'] : 'unknown',
+				'has_refresh'   => $has_refresh ? 'yes' : 'no',
+				'expires_in'    => $expires_in > 0 ? $expires_in . ' seconds' : 'unknown',
+				'token_type'    => 'Bearer',
+				'can_make_api_calls' => $has_refresh && $expires_in > 0 ? 'yes' : 'limited',
 			),
 			$user->ID,
 			$user->user_email
