@@ -379,6 +379,13 @@ class Authentication extends Singleton {
 				update_user_meta( $user->ID, 'oidc_id_token', $result['oidc_id_token'] );
 			}
 		}
+		// If this is an OAuth2 login, save the encrypted token for use by other plugins.
+		if ( $user && 'oauth2' === $authenticated_by ) {
+			if ( ! empty( $result['encrypted_token'] ) ) {
+				update_user_meta( $user->ID, 'encrypted_token', $result['encrypted_token'] );
+			}
+		}
+
 
 		// Integration: disable Cloudflare Turnstile verification from the
 		// simple-cloudflare-turnstile plugin if it is activated (conflicts with
@@ -536,6 +543,13 @@ class Authentication extends Singleton {
 					$token = $provider->getAccessToken( 'authorization_code', array(
 						'code' => $_REQUEST['code'],
 					) );
+
+					// Encrypt the token for secure storage.
+					$token_json_prepared = $token->jsonSerialize();
+					$token_json = json_encode( $token_json_prepared );
+					$save_secure = new Save_Secure();
+					$encrypted_token = $save_secure->encrypt( $token_json );
+
 				} catch ( \Exception $e ) {
 					// Failed to get token; try again from the beginning. Usually a
 					// bad_verification_code error. See: https://docs.github.com/en/free-pro-team@latest/developers/apps/troubleshooting-oauth-app-access-token-request-errors#bad-verification-code.
@@ -657,6 +671,13 @@ class Authentication extends Singleton {
 						'code'  => $_REQUEST['code'],
 						'scope' => $provider->scope,
 					) );
+
+					// Encrypt the token for secure storage.
+					$token_json_prepared = $token->jsonSerialize();
+					$token_json = json_encode( $token_json_prepared );
+					$save_secure = new Save_Secure();
+					$encrypted_token = $save_secure->encrypt( $token_json );
+
 				} catch ( \Exception $e ) {
 					// Failed to get token; try again from the beginning.
 					$auth_url                = $provider->getAuthorizationUrl( array(
@@ -939,6 +960,7 @@ class Authentication extends Singleton {
 			'oauth2_attributes' => $attributes,
 			'oauth2_server_id'  => $oauth2_server_id,
 			'oauth2_token'      => isset( $token ) ? $token : null,
+			'encrypted_token'   => isset( $encrypted_token ) ? $encrypted_token : '',
 		);
 	}
 
@@ -2021,6 +2043,12 @@ class Authentication extends Singleton {
 		// "authenticated_by" usermeta to).
 		if ( empty( self::$authenticated_by ) && ! empty( $_REQUEST['external'] ) ) {
 			self::$authenticated_by = $_REQUEST['external'];
+		}
+
+		// Delete encrypted token from user meta on logout.
+		$user_id = get_current_user_id();
+		if ( $user_id > 0 ) {
+			delete_user_meta( $user_id, 'encrypted_token' );
 		}
 	}
 
