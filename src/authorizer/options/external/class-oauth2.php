@@ -359,6 +359,52 @@ class OAuth2 extends \Authorizer\Singleton {
 	 * @param  string $args Args (e.g., multisite admin mode).
 	 * @return void
 	 */
+	public function print_textarea_oauth2_scope( $args = '' ) {
+		// Get plugin option.
+		$options              = Options::get_instance();
+		$suffix               = empty( $args['oauth2_num_server'] ) || 1 === $args['oauth2_num_server'] ? '' : '_' . $args['oauth2_num_server'];
+		$option               = 'oauth2_scope' . $suffix;
+		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
+
+		// Get OAuth2 provider for context-specific defaults.
+		$provider_option = 'oauth2_provider' . $suffix;
+		$provider        = $options->get( $provider_option, Helper::get_context( $args ), 'allow override', 'print overlay' );
+
+		// Set default scopes based on provider.
+		if ( empty( $auth_settings_option ) ) {
+			if ( 'azure' === $provider ) {
+				$auth_settings_option = 'openid profile email User.Read Calendars.Read Mail.Read Tasks.Read Sites.Read.All offline_access';
+			} elseif ( 'github' === $provider ) {
+				$auth_settings_option = 'user:email';
+			} else {
+				$auth_settings_option = 'openid profile email';
+			}
+		}
+
+		// Print option elements.
+		?>
+		<textarea id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" placeholder="openid profile email" rows="3" style="width: 100%; max-width: 600px;"><?php echo esc_textarea( $auth_settings_option ); ?></textarea>
+		<p class="description">
+			<?php esc_html_e( 'Space-separated list of OAuth2 scopes to request. For Azure/Microsoft, common scopes include:', 'authorizer' ); ?>
+			<br>
+			<strong>User-delegated (no admin consent):</strong> <code>openid profile email User.Read Calendars.Read Mail.Read Tasks.Read Sites.Read.All offline_access</code>
+			<br>
+			<strong>Application permissions (requires admin):</strong> <code>User.Read.All Group.Read.All</code>
+			<br>
+			<?php esc_html_e( 'For GitHub, use: ', 'authorizer' ); ?><code>user:email</code>
+			<br>
+			<?php esc_html_e( 'For Generic OAuth2, use: ', 'authorizer' ); ?><code>openid profile email</code>
+		</p>
+		<?php
+	}
+
+
+	/**
+	 * Settings print callback.
+	 *
+	 * @param  string $args Args (e.g., multisite admin mode).
+	 * @return void
+	 */
 	public function print_text_oauth2_url_authorize( $args = '' ) {
 		// Get plugin option.
 		$options              = Options::get_instance();

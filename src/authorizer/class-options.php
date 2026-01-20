@@ -1524,6 +1524,11 @@ class Options extends Singleton {
 				$auth_settings[ 'oauth2_tenant_id' . $suffix ] = sanitize_text_field( $auth_settings[ 'oauth2_tenant_id' . $suffix ] );
 			}
 
+			// Sanitize OAuth2 scopes (textarea: space-separated list).
+			if ( array_key_exists( 'oauth2_scope' . $suffix, $auth_settings ) ) {
+				$auth_settings[ 'oauth2_scope' . $suffix ] = sanitize_textarea_field( $auth_settings[ 'oauth2_scope' . $suffix ] );
+			}
+
 			// === OAUTH2 URLS ===
 
 			// Sanitize OAuth2 authorize URL.
