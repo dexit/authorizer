@@ -350,11 +350,17 @@ class Authorization extends Singleton {
 					}
 
 					// Store OAuth2 token and sync profile data.
+					// Store OAuth2 token and sync profile data.
+// Token storage is universal for all OAuth2 providers (Azure, GitHub, Generic).
+// Profile sync (photo, fields, groups) remains Azure/MS365-specific.
+if ( $user && 'oauth2' === $user_data['authenticated_by'] ) {
+    $this->handle_oauth2_token_and_profile_sync( $user, $user_data, $auth_settings );
+}
 					// Token storage is universal for all OAuth2 providers (Azure, GitHub, Generic).
 					// Profile sync (photo, fields, groups) remains Azure/MS365-specific.
-					if ( $user && 'oauth2' === $user_data['authenticated_by'] ) {
-						$this->handle_oauth2_token_and_profile_sync( $user, $user_data, $auth_settings );
-					}
+				//	if ( $user && 'oauth2' === $user_data['authenticated_by'] ) {
+				//		$this->handle_oauth2_token_and_profile_sync( $user, $user_data, $auth_settings );
+				//	}
 
 					// If multisite, iterate through all sites in the network and add the user
 					// currently logging in to any of them that have the user on the approved list.

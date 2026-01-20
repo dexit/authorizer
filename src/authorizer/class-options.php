@@ -1484,7 +1484,83 @@ class Options extends Singleton {
 
 			// Sanitize Sync profile fields (checkbox: value can only be '1' or empty string).
 			$auth_settings[ 'oauth2_sync_profile_fields' . $suffix ] = array_key_exists( 'oauth2_sync_profile_fields' . $suffix, $auth_settings ) && strlen( $auth_settings[ 'oauth2_sync_profile_fields' . $suffix ] ) > 0 ? '1' : '';
+// === PROVIDER & LABEL ===
 
+// Sanitize OAuth2 provider (select: validate against allowed providers).
+if ( array_key_exists( 'oauth2_provider' . $suffix, $auth_settings ) ) {
+    $provider = sanitize_text_field( $auth_settings[ 'oauth2_provider' . $suffix ] );
+    $valid_providers = array( '', 'azure', 'github', 'generic' );
+    $auth_settings[ 'oauth2_provider' . $suffix ] = in_array( $provider, $valid_providers, true ) ? $provider : '';
+}
+
+// Sanitize OAuth2 custom label (text).
+if ( array_key_exists( 'oauth2_custom_label' . $suffix, $auth_settings ) ) {
+    $auth_settings[ 'oauth2_custom_label' . $suffix ] = sanitize_text_field( $auth_settings[ 'oauth2_custom_label' . $suffix ] );
+}
+
+// === CLIENT CREDENTIALS ===
+
+// Sanitize OAuth2 client ID (text).
+if ( array_key_exists( 'oauth2_clientid' . $suffix, $auth_settings ) ) {
+    $auth_settings[ 'oauth2_clientid' . $suffix ] = sanitize_text_field( $auth_settings[ 'oauth2_clientid' . $suffix ] );
+}
+
+// Sanitize OAuth2 client secret (text).
+// Note: Not encrypted because value may be overridden by filters/constants.
+if ( array_key_exists( 'oauth2_clientsecret' . $suffix, $auth_settings ) ) {
+    $auth_settings[ 'oauth2_clientsecret' . $suffix ] = sanitize_text_field( $auth_settings[ 'oauth2_clientsecret' . $suffix ] );
+}
+
+// === DOMAIN & TENANT ===
+
+// Sanitize OAuth2 hosted domain (textarea: one domain per line).
+if ( array_key_exists( 'oauth2_hosteddomain' . $suffix, $auth_settings ) ) {
+    $auth_settings[ 'oauth2_hosteddomain' . $suffix ] = sanitize_textarea_field( $auth_settings[ 'oauth2_hosteddomain' . $suffix ] );
+}
+
+// Sanitize OAuth2 tenant ID (text).
+if ( array_key_exists( 'oauth2_tenant_id' . $suffix, $auth_settings ) ) {
+    $auth_settings[ 'oauth2_tenant_id' . $suffix ] = sanitize_text_field( $auth_settings[ 'oauth2_tenant_id' . $suffix ] );
+}
+
+// === OAUTH2 URLS ===
+
+// Sanitize OAuth2 authorize URL.
+if ( array_key_exists( 'oauth2_url_authorize' . $suffix, $auth_settings ) ) {
+    $auth_settings[ 'oauth2_url_authorize' . $suffix ] = esc_url_raw( $auth_settings[ 'oauth2_url_authorize' . $suffix ] );
+}
+
+// Sanitize OAuth2 token URL.
+if ( array_key_exists( 'oauth2_url_token' . $suffix, $auth_settings ) ) {
+    $auth_settings[ 'oauth2_url_token' . $suffix ] = esc_url_raw( $auth_settings[ 'oauth2_url_token' . $suffix ] );
+}
+
+// Sanitize OAuth2 resource URL.
+if ( array_key_exists( 'oauth2_url_resource' . $suffix, $auth_settings ) ) {
+    $auth_settings[ 'oauth2_url_resource' . $suffix ] = esc_url_raw( $auth_settings[ 'oauth2_url_resource' . $suffix ] );
+}
+
+// === ATTRIBUTE MAPPINGS ===
+
+// Sanitize OAuth2 username attribute (text).
+if ( array_key_exists( 'oauth2_attr_username' . $suffix, $auth_settings ) ) {
+    $auth_settings[ 'oauth2_attr_username' . $suffix ] = sanitize_text_field( $auth_settings[ 'oauth2_attr_username' . $suffix ] );
+}
+
+// Sanitize OAuth2 email attribute (text).
+if ( array_key_exists( 'oauth2_attr_email' . $suffix, $auth_settings ) ) {
+    $auth_settings[ 'oauth2_attr_email' . $suffix ] = sanitize_text_field( $auth_settings[ 'oauth2_attr_email' . $suffix ] );
+}
+
+// Sanitize OAuth2 first name attribute (text).
+if ( array_key_exists( 'oauth2_attr_first_name' . $suffix, $auth_settings ) ) {
+    $auth_settings[ 'oauth2_attr_first_name' . $suffix ] = sanitize_text_field( $auth_settings[ 'oauth2_attr_first_name' . $suffix ] );
+}
+
+// Sanitize OAuth2 last name attribute (text).
+if ( array_key_exists( 'oauth2_attr_last_name' . $suffix, $auth_settings ) ) {
+    $auth_settings[ 'oauth2_attr_last_name' . $suffix ] = sanitize_text_field( $auth_settings[ 'oauth2_attr_last_name' . $suffix ] );
+}
 			// === PROVIDER & LABEL ===
 
 			// Sanitize OAuth2 provider (select: validate against allowed providers).
