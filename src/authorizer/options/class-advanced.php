@@ -442,4 +442,154 @@ class Advanced extends \Authorizer\Singleton {
 		<input type="checkbox" id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" value="1"<?php checked( 1 === intval( $auth_settings_option ) ); ?> /><label for="auth_settings_<?php echo esc_attr( $option ); ?>"><?php esc_html_e( "Configure this site independently (don't inherit any multisite settings)", 'authorizer' ); ?></label>
 		<?php
 	}
+
+
+	/**
+	 * Settings print callback.
+	 * Section info for Login Page Branding.
+	 *
+	 * @param  string $args Args (e.g., multisite admin mode).
+	 * @return void
+	 */
+	public function print_section_info_login_branding( $args = '' ) {
+		?>
+		<div id="section_info_login_branding" class="section_info">
+			<p><?php esc_html_e( 'Customize the appearance of the WordPress login page with your own logo, colors, and CSS.', 'authorizer' ); ?></p>
+		</div>
+		<?php
+	}
+
+
+	/**
+	 * Settings print callback.
+	 *
+	 * @param  string $args Args (e.g., multisite admin mode).
+	 * @return void
+	 */
+	public function print_text_login_logo_url( $args = '' ) {
+		// Get plugin option.
+		$options              = Options::get_instance();
+		$option               = 'login_logo_url';
+		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
+
+		// Print option elements.
+		?>
+		<input type="url" id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" value="<?php echo esc_attr( $auth_settings_option ); ?>" placeholder="https://example.com/logo.png" class="wide" />
+		<p class="description"><?php esc_html_e( 'Enter the full URL to your logo image. Recommended size: 320x80px.', 'authorizer' ); ?></p>
+		<?php
+	}
+
+
+	/**
+	 * Settings print callback.
+	 *
+	 * @param  string $args Args (e.g., multisite admin mode).
+	 * @return void
+	 */
+	public function print_text_login_logo_link( $args = '' ) {
+		// Get plugin option.
+		$options              = Options::get_instance();
+		$option               = 'login_logo_link';
+		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
+
+		// Print option elements.
+		?>
+		<input type="url" id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" value="<?php echo esc_attr( $auth_settings_option ); ?>" placeholder="<?php echo esc_attr( home_url() ); ?>" class="wide" />
+		<p class="description"><?php esc_html_e( 'Where should the logo link to? Leave empty to link to your homepage.', 'authorizer' ); ?></p>
+		<?php
+	}
+
+
+	/**
+	 * Settings print callback.
+	 *
+	 * @param  string $args Args (e.g., multisite admin mode).
+	 * @return void
+	 */
+	public function print_text_login_logo_alt( $args = '' ) {
+		// Get plugin option.
+		$options              = Options::get_instance();
+		$option               = 'login_logo_alt';
+		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
+
+		// Print option elements.
+		?>
+		<input type="text" id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" value="<?php echo esc_attr( $auth_settings_option ); ?>" placeholder="<?php echo esc_attr( get_bloginfo( 'name' ) ); ?>" class="wide" />
+		<p class="description"><?php esc_html_e( 'Accessibility text for your logo. Leave empty to use your site name.', 'authorizer' ); ?></p>
+		<?php
+	}
+
+
+	/**
+	 * Settings print callback.
+	 *
+	 * @param  string $args Args (e.g., multisite admin mode).
+	 * @return void
+	 */
+	public function print_color_login_color_primary( $args = '' ) {
+		// Get plugin option.
+		$options              = Options::get_instance();
+		$option               = 'login_color_primary';
+		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
+
+		// Set default if empty.
+		if ( empty( $auth_settings_option ) ) {
+			$auth_settings_option = '#0073aa';
+		}
+
+		// Print option elements.
+		?>
+		<input type="text" id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" value="<?php echo esc_attr( $auth_settings_option ); ?>" class="authorizer-color-picker" data-default-color="#0073aa" />
+		<p class="description"><?php esc_html_e( 'Color for login buttons and links. Default: #0073aa (WordPress blue).', 'authorizer' ); ?></p>
+		<?php
+	}
+
+
+	/**
+	 * Settings print callback.
+	 *
+	 * @param  string $args Args (e.g., multisite admin mode).
+	 * @return void
+	 */
+	public function print_color_login_bg_color( $args = '' ) {
+		// Get plugin option.
+		$options              = Options::get_instance();
+		$option               = 'login_bg_color';
+		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
+
+		// Set default if empty.
+		if ( empty( $auth_settings_option ) ) {
+			$auth_settings_option = '#f0f0f1';
+		}
+
+		// Print option elements.
+		?>
+		<input type="text" id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" value="<?php echo esc_attr( $auth_settings_option ); ?>" class="authorizer-color-picker" data-default-color="#f0f0f1" />
+		<p class="description"><?php esc_html_e( 'Background color for the login page. Default: #f0f0f1 (light gray).', 'authorizer' ); ?></p>
+		<?php
+	}
+
+
+	/**
+	 * Settings print callback.
+	 *
+	 * @param  string $args Args (e.g., multisite admin mode).
+	 * @return void
+	 */
+	public function print_textarea_login_custom_css( $args = '' ) {
+		// Get plugin option.
+		$options              = Options::get_instance();
+		$option               = 'login_custom_css';
+		$auth_settings_option = $options->get( $option, Helper::get_context( $args ), 'allow override', 'print overlay' );
+
+		// Print option elements.
+		?>
+		<textarea id="auth_settings_<?php echo esc_attr( $option ); ?>" name="auth_settings[<?php echo esc_attr( $option ); ?>]" rows="10" class="large-text code"><?php echo esc_textarea( $auth_settings_option ); ?></textarea>
+		<p class="description">
+			<?php esc_html_e( 'Add custom CSS to further style the login page. Example:', 'authorizer' ); ?><br />
+			<code>body.login { font-family: 'Arial', sans-serif; }</code><br />
+			<code>#loginform { border-radius: 8px; }</code>
+		</p>
+		<?php
+	}
 }
