@@ -127,6 +127,169 @@ class Login_Form extends Singleton {
 				wp_enqueue_style( 'authorizer-login-custom-css-' . sanitize_title( $branding_option['value'] ), $branding_option['css_url'], array(), '2.8.0' );
 			}
 		}
+
+		// ==================================================================
+		// OAUTH2 PROVIDER-SPECIFIC BRANDING & CONFIGURATION
+		// ==================================================================
+
+		// Check if OAuth2 is enabled.
+		$oauth2_enabled = ! empty( $auth_settings['oauth2'] ) && '1' === $auth_settings['oauth2'];
+
+		if ( $oauth2_enabled ) {
+			// Get number of OAuth2 servers configured.
+			$oauth2_num_servers = ! empty( $auth_settings['oauth2_num_servers'] ) ? intval( $auth_settings['oauth2_num_servers'] ) : 1;
+
+			// Build OAuth2 configuration data to pass to JavaScript.
+			$oauth2_config = array();
+
+			for ( $oauth2_num_server = 1; $oauth2_num_server <= $oauth2_num_servers; $oauth2_num_server++ ) {
+				$suffix   = 1 === $oauth2_num_server ? '' : '_' . $oauth2_num_server;
+				$provider = ! empty( $auth_settings[ 'oauth2_provider' . $suffix ] ) ? $auth_settings[ 'oauth2_provider' . $suffix ] : '';
+
+				// Skip if no provider configured.
+				if ( empty( $provider ) ) {
+					continue;
+				}
+
+				// Get provider configuration.
+				$custom_label = ! empty( $auth_settings[ 'oauth2_custom_label' . $suffix ] ) ? $auth_settings[ 'oauth2_custom_label' . $suffix ] : '';
+				$scope        = ! empty( $auth_settings[ 'oauth2_scope' . $suffix ] ) ? $auth_settings[ 'oauth2_scope' . $suffix ] : '';
+
+				// Set default labels if not customized.
+				if ( empty( $custom_label ) ) {
+					if ( 'azure' === $provider ) {
+						$custom_label = __( 'Sign in with Microsoft', 'authorizer' );
+					} elseif ( 'github' === $provider ) {
+						$custom_label = __( 'Sign in with GitHub', 'authorizer' );
+					} else {
+						$custom_label = __( 'Sign in with OAuth2', 'authorizer' );
+					}
+				}
+
+				// Build OAuth2 server config.
+				$server_config = array(
+					'server_id'    => $oauth2_num_server,
+					'provider'     => $provider,
+					'label'        => $custom_label,
+					'scope'        => $scope,
+					'button_class' => 'button button-primary button-hero oauth2-login-button oauth2-provider-' . esc_attr( $provider ),
+				);
+
+				// Add provider-specific configuration.
+				if ( 'azure' === $provider ) {
+					$server_config['icon']  = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMSIgaGVpZ2h0PSIyMSI+PHBhdGggZmlsbD0iI2YzZjNmMyIgZD0iTTAgMGgyMXYyMUgweiIvPjxwYXRoIGZpbGw9IiNmMzUzMjUiIGQ9Ik0xIDFoOXY5SDF6Ii8+PHBhdGggZmlsbD0iIzdmYmEwMCIgZD0iTTEgMTFoOXY5SDF6Ii8+PHBhdGggZmlsbD0iIzAwYTRlZiIgZD0iTTExIDFoOXY5aC05eiIvPjxwYXRoIGZpbGw9IiNmZmIwMDAiIGQ9Ik0xMSAxMWg5djloLTl6Ii8+PC9zdmc+';
+					$server_config['color'] = '#0078d4';
+				} elseif ( 'github' === $provider ) {
+					$server_config['icon']  = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBmaWxsPSIjZmZmZmZmIiBkPSJNMTIgMGMtNi42MjYgMC0xMiA1LjM3My0xMiAxMiAwIDUuMzAyIDMuNDM4IDkuOCA4LjIwNyAxMS4zODcuNTk5LjExMS43OTMtLjI2MS43OTMtLjU3N3YtMi4yMzRjLTMuMzM4LjcyNi00LjAzMy0xLjQxNi00LjAzMy0xLjQxNi0uNTQ2LTEuMzg3LTEuMzMzLTEuNzU2LTEuMzMzLTEuNzU2LTEuMDg5LS43NDUuMDgzLS43MjkuMDgzLS43MjkgMS4yMDUuMDg0IDEuODM5IDEuMjM3IDEuODM5IDEuMjM3IDEuMDcgMS44MzQgMi44MDcgMS4zMDQgMy40OTIuOTk3LjEwNy0uNzc1LjQxOC0xLjMwNS43NjItMS42MDQtMi42NjUtLjMwNS01LjQ2Ny0xLjMzNC01LjQ2Ny01LjkzMSAwLTEuMzExLjQ2OS0yLjM4MSAxLjIzNi0zLjIyMS0uMTI0LS4zMDMtLjUzNS0xLjUyNC4xMTctMy4xNzYgMCAwIDEuMDA4LS4zMjIgMy4zMDEgMS4yMy45NTctLjI2NiAxLjk4My0uMzk5IDMuMDAzLS40MDQgMS4wMi4wMDUgMi4wNDcuMTM4IDMuMDA2LjQwNCAyLjI5MS0xLjU1MiAzLjI5Ny0xLjIzIDMuMjk3LTEuMjMuNjUzIDEuNjUzLjI0MiAyLjg3NC4xMTggMy4xNzYuNzcuODQgMS4yMzUgMS45MTEgMS4yMzUgMy4yMjEgMCA0LjYwOS0yLjgwNyA1LjYyNC01LjQ3OSA1LjkyMS40My4zNzIuODIzIDEuMTAyLjgyMyAyLjIyMnYzLjI5M2MwIC4zMTkuMTkyLjY5NC44MDEuNTc2IDQuNzY1LTEuNTg5IDguMTk5LTYuMDg2IDguMTk5LTExLjM4NiAwLTYuNjI3LTUuMzczLTEyLTEyLTEyeiIvPjwvc3ZnPg==';
+					$server_config['color'] = '#24292e';
+				}
+
+				/**
+				 * Filter OAuth2 server configuration for login page.
+				 *
+				 * Allows customization of OAuth2 button appearance, labels, and behavior.
+				 *
+				 * @param array $server_config OAuth2 server configuration.
+				 * @param int   $oauth2_num_server OAuth2 server number (1-20).
+				 * @param array $auth_settings All Authorizer settings.
+				 */
+				$server_config = apply_filters( 'authorizer_oauth2_login_button_config', $server_config, $oauth2_num_server, $auth_settings );
+
+				$oauth2_config[] = $server_config;
+			}
+
+			// Pass OAuth2 configuration to JavaScript.
+			if ( ! empty( $oauth2_config ) ) {
+				wp_localize_script(
+					'auth_login_scripts',
+					'authorizerOAuth2Config',
+					array(
+						'servers'          => $oauth2_config,
+						'showScopes'       => apply_filters( 'authorizer_show_oauth2_scopes_on_login', false ),
+						'scopeLabel'       => __( 'Permissions:', 'authorizer' ),
+						'autoLoginEnabled' => ! empty( $auth_settings['oauth2_auto_login'] ) && 'azure' === $auth_settings['oauth2_auto_login'],
+						'loginUrl'         => wp_login_url(),
+					)
+				);
+			}
+
+			/**
+			 * Developers can use the `authorizer_oauth2_login_branding_css` filter
+			 * to provide custom CSS for OAuth2 provider buttons on the login page.
+			 *
+			 * Example:
+			 * function my_oauth2_login_branding_css( $provider, $server_id ) {
+			 *   if ( 'azure' === $provider ) {
+			 *     return 'https://example.edu/azure-button.css';
+			 *   }
+			 *   return '';
+			 * }
+			 * add_filter( 'authorizer_oauth2_login_branding_css', 'my_oauth2_login_branding_css', 10, 2 );
+			 */
+			foreach ( $oauth2_config as $server_config ) {
+				/**
+				 * Filter OAuth2 login button CSS URL.
+				 *
+				 * @param string $css_url CSS URL (empty by default).
+				 * @param string $provider OAuth2 provider (azure, github, generic).
+				 * @param int    $server_id OAuth2 server number.
+				 */
+				$oauth2_button_css = apply_filters(
+					'authorizer_oauth2_login_branding_css',
+					'',
+					$server_config['provider'],
+					$server_config['server_id']
+				);
+
+				if ( ! empty( $oauth2_button_css ) ) {
+					wp_enqueue_style(
+						'authorizer-oauth2-button-css-' . $server_config['provider'] . '-' . $server_config['server_id'],
+						$oauth2_button_css,
+						array(),
+						'1.0.0'
+					);
+				}
+			}
+
+			/**
+			 * Developers can use the `authorizer_oauth2_login_branding_js` filter
+			 * to provide custom JavaScript for OAuth2 provider buttons on the login page.
+			 *
+			 * Example:
+			 * function my_oauth2_login_branding_js( $provider, $server_id ) {
+			 *   if ( 'azure' === $provider ) {
+			 *     return 'https://example.edu/azure-button.js';
+			 *   }
+			 *   return '';
+			 * }
+			 * add_filter( 'authorizer_oauth2_login_branding_js', 'my_oauth2_login_branding_js', 10, 2 );
+			 */
+			foreach ( $oauth2_config as $server_config ) {
+				/**
+				 * Filter OAuth2 login button JavaScript URL.
+				 *
+				 * @param string $js_url JavaScript URL (empty by default).
+				 * @param string $provider OAuth2 provider (azure, github, generic).
+				 * @param int    $server_id OAuth2 server number.
+				 */
+				$oauth2_button_js = apply_filters(
+					'authorizer_oauth2_login_branding_js',
+					'',
+					$server_config['provider'],
+					$server_config['server_id']
+				);
+
+				if ( ! empty( $oauth2_button_js ) ) {
+					wp_enqueue_script(
+						'authorizer-oauth2-button-js-' . $server_config['provider'] . '-' . $server_config['server_id'],
+						$oauth2_button_js,
+						array( 'jquery' ),
+						'1.0.0',
+						true
+					);
+				}
+			}
+		}
 	}
 
 
