@@ -605,6 +605,16 @@ class Admin_Page extends Singleton {
 				)
 			);
 			add_settings_field(
+				'auth_settings_oauth2_scope' . $suffix,
+				$prefix . __( 'OAuth2 Scopes', 'authorizer' ),
+				array( OAuth2::get_instance(), 'print_textarea_oauth2_scope' ),
+				'authorizer',
+				'auth_settings_external_oauth2',
+				array(
+					'oauth2_num_server' => $oauth2_num_server,
+				)
+			);
+			add_settings_field(
 				'auth_settings_oauth2_url_authorize' . $suffix,
 				$prefix . __( 'Authorization URL', 'authorizer' ),
 				array( OAuth2::get_instance(), 'print_text_oauth2_url_authorize' ),
@@ -1517,6 +1527,17 @@ class Admin_Page extends Singleton {
 									?>
 								</td>
 							</tr>
+						<tr>
+							<th scope="row"><?php echo esc_html( $prefix ); ?><?php esc_html_e( 'OAuth2 Scopes', 'authorizer' ); ?></th>
+							<td>
+								<?php
+								$oauth2->print_textarea_oauth2_scope( array(
+									'context' => Helper::NETWORK_CONTEXT,
+									'oauth2_num_server' => $oauth2_num_server,
+								) );
+								?>
+							</td>
+						</tr>
 							<tr>
 								<th scope="row"><?php echo esc_html( $prefix ); ?><?php esc_html_e( 'Authorization URL', 'authorizer' ); ?></th>
 								<td>

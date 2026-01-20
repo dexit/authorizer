@@ -517,45 +517,49 @@ class Authentication extends Singleton {
 			if ( PHP_SESSION_ACTIVE !== session_status() ) {
 				session_start();
 			}
-			$provider = new \League\OAuth2\Client\Provider\Github( array(
-				'clientId'     => $oauth2_clientid,
-				'clientSecret' => $oauth2_clientsecret,
-				'redirectUri'  => $redirect_uri,
+		$provider = new \League\OAuth2\Client\Provider\Github( array(
+			'clientId'     => $oauth2_clientid,
+			'clientSecret' => $oauth2_clientsecret,
+			'redirectUri'  => $redirect_uri,
+		) );
+
+		// Get configured OAuth2 scopes.
+		$suffix               = 1 === $oauth2_server_id ? '' : '_' . $oauth2_server_id;
+		$oauth2_scope_setting = ! empty( $auth_settings[ 'oauth2_scope' . $suffix ] ) ? $auth_settings[ 'oauth2_scope' . $suffix ] : 'user:email';
+
+		// If we don't have an authorization code, then get one.
+		if ( ! isset( $_REQUEST['code'] ) ) {
+			$auth_url                = $provider->getAuthorizationUrl( array(
+				'scope' => $oauth2_scope_setting,
 			) );
+			$_SESSION['oauth2state'] = $provider->getState();
+			header( 'Location: ' . $auth_url );
+			exit;
 
-			// If we don't have an authorization code, then get one.
-			if ( ! isset( $_REQUEST['code'] ) ) {
-				$auth_url                = $provider->getAuthorizationUrl( array(
-					'scope' => 'user:email',
+		} elseif ( empty( $_REQUEST['state'] ) || empty( $_SESSION['oauth2state'] ) || $_REQUEST['state'] !== $_SESSION['oauth2state'] ) {
+			// Check state against previously stored one to mitigate CSRF attacks.
+			unset( $_SESSION['oauth2state'] );
+			exit;
+
+		} else {
+			// Try to get an access token (using the authorization code grant).
+			try {
+				$token = $provider->getAccessToken( 'authorization_code', array(
+					'code' => $_REQUEST['code'],
 				) );
-				$_SESSION['oauth2state'] = $provider->getState();
-				header( 'Location: ' . $auth_url );
-				exit;
 
-			} elseif ( empty( $_REQUEST['state'] ) || empty( $_SESSION['oauth2state'] ) || $_REQUEST['state'] !== $_SESSION['oauth2state'] ) {
-				// Check state against previously stored one to mitigate CSRF attacks.
-				unset( $_SESSION['oauth2state'] );
-				exit;
+				// Encrypt the token for secure storage.
+				$token_json_prepared = $token->jsonSerialize();
+				$token_json = json_encode( $token_json_prepared );
+				$save_secure = new Save_Secure();
+				$encrypted_token = $save_secure->encrypt( $token_json );
 
-			} else {
-				// Try to get an access token (using the authorization code grant).
-				try {
-					$token = $provider->getAccessToken( 'authorization_code', array(
-						'code' => $_REQUEST['code'],
-					) );
-
-					// Encrypt the token for secure storage.
-					$token_json_prepared = $token->jsonSerialize();
-					$token_json = json_encode( $token_json_prepared );
-					$save_secure = new Save_Secure();
-					$encrypted_token = $save_secure->encrypt( $token_json );
-
-				} catch ( \Exception $e ) {
-					// Failed to get token; try again from the beginning. Usually a
-					// bad_verification_code error. See: https://docs.github.com/en/free-pro-team@latest/developers/apps/troubleshooting-oauth-app-access-token-request-errors#bad-verification-code.
-					$auth_url                = $provider->getAuthorizationUrl( array(
-						'scope' => 'user:email',
-					) );
+			} catch ( \Exception $e ) {
+				// Failed to get token; try again from the beginning. Usually a
+				// bad_verification_code error. See: https://docs.github.com/en/free-pro-team@latest/developers/apps/troubleshooting-oauth-app-access-token-request-errors#bad-verification-code.
+				$auth_url                = $provider->getAuthorizationUrl( array(
+					'scope' => $oauth2_scope_setting,
+				) );
 					$_SESSION['oauth2state'] = $provider->getState();
 
 					// Log the error for debugging.
@@ -627,19 +631,45 @@ class Authentication extends Singleton {
 				// portal).
 				$_SESSION['oauth2_server_id'] = $oauth2_server_id;
 
-				$provider = new \TheNetworg\OAuth2\Client\Provider\Azure( array(
-					'clientId'     => $oauth2_clientid,
-					'clientSecret' => $oauth2_clientsecret,
-					'redirectUri'  => $redirect_uri,
-					'tenant'       => empty( $oauth2_tenant_id ) ? 'common' : $oauth2_tenant_id,
-				) );
-				// Use v2 API. Set to Azure::ENDPOINT_VERSION_1_0 to use v1 API.
-				$provider->defaultEndPointVersion = \TheNetworg\OAuth2\Client\Provider\Azure::ENDPOINT_VERSION_2_0;
+			$provider = new \TheNetworg\OAuth2\Client\Provider\Azure( array(
+				'clientId'     => $oauth2_clientid,
+				'clientSecret' => $oauth2_clientsecret,
+				'redirectUri'  => $redirect_uri,
+				'tenant'       => empty( $oauth2_tenant_id ) ? 'common' : $oauth2_tenant_id,
+			) );
+			// Use v2 API. Set to Azure::ENDPOINT_VERSION_1_0 to use v1 API.
+			$provider->defaultEndPointVersion = \TheNetworg\OAuth2\Client\Provider\Azure::ENDPOINT_VERSION_2_0;
 
+			// Get configured OAuth2 scopes.
+			$suffix               = 1 === $oauth2_server_id ? '' : '_' . $oauth2_server_id;
+			$oauth2_scope_setting = ! empty( $auth_settings[ 'oauth2_scope' . $suffix ] ) ? $auth_settings[ 'oauth2_scope' . $suffix ] : '';
+
+			// If no custom scopes configured, use enhanced default scopes.
+			if ( empty( $oauth2_scope_setting ) ) {
 				$baseGraphUri    = $provider->getRootMicrosoftGraphUri( null );
 				// Request user-delegated permissions (NO admin consent required).
-				// User.Read provides access to: /me (profile), /me/memberOf (groups), /me/photo.
-				$provider->scope = 'openid profile email offline_access ' . $baseGraphUri . '/User.Read';
+				// Extended scopes provide access to: /me (profile), /me/memberOf (groups), /me/photo,
+				// /me/calendar (Calendars.Read), /me/messages (Mail.Read), /me/todo (Tasks.Read),
+				// /sites (Sites.Read.All).
+				$provider->scope = 'openid profile email User.Read Calendars.Read Mail.Read Tasks.Read Sites.Read.All offline_access';
+			} else {
+				// Use custom configured scopes.
+				// Note: If scopes include MS Graph resources (User.Read, etc.) without full URI,
+				// prepend the Graph URI. If already includes "https://", use as-is.
+				if ( strpos( $oauth2_scope_setting, 'https://' ) === false && preg_match( '/\b(User\.|Mail\.|Calendar\.|Tasks\.|Sites\.|Group\.)/', $oauth2_scope_setting ) ) {
+					$baseGraphUri    = $provider->getRootMicrosoftGraphUri( null );
+					// Replace Graph-specific scopes with full URIs.
+					$provider->scope = preg_replace_callback(
+						'/\b(User\.[A-Za-z.]+|Mail\.[A-Za-z.]+|Calendars\.[A-Za-z.]+|Tasks\.[A-Za-z.]+|Sites\.[A-Za-z.]+|Group\.[A-Za-z.]+)\b/',
+						function( $matches ) use ( $baseGraphUri ) {
+							return $baseGraphUri . '/' . $matches[1];
+						},
+						$oauth2_scope_setting
+					);
+				} else {
+					$provider->scope = $oauth2_scope_setting;
+				}
+			}
 			} catch ( \Exception $e ) {
 				// Invalid configuration, so this in not a successful login. Show error
 				// message to user.
@@ -772,17 +802,57 @@ class Authentication extends Singleton {
 				$_SESSION['oauth2_redirect_to'] = $login_querystring['redirect_to'];
 			}
 
-			$provider = new \League\OAuth2\Client\Provider\GenericProvider( array(
-				'clientId'                => $oauth2_clientid,
-				'clientSecret'            => $oauth2_clientsecret,
-				'redirectUri'             => $redirect_uri,
-				'urlAuthorize'            => $oauth2_url_authorize,
-				'urlAccessToken'          => $oauth2_url_token,
-				'urlResourceOwnerDetails' => $oauth2_url_resource,
-			) );
+		$provider = new \League\OAuth2\Client\Provider\GenericProvider( array(
+			'clientId'                => $oauth2_clientid,
+			'clientSecret'            => $oauth2_clientsecret,
+			'redirectUri'             => $redirect_uri,
+			'urlAuthorize'            => $oauth2_url_authorize,
+			'urlAccessToken'          => $oauth2_url_token,
+			'urlResourceOwnerDetails' => $oauth2_url_resource,
+		) );
 
-			// If we don't have an authorization code, then get one.
-			if ( ! isset( $_REQUEST['code'] ) ) {
+		// Get configured OAuth2 scopes.
+		$suffix               = 1 === $oauth2_server_id ? '' : '_' . $oauth2_server_id;
+		$oauth2_scope_setting = ! empty( $auth_settings[ 'oauth2_scope' . $suffix ] ) ? $auth_settings[ 'oauth2_scope' . $suffix ] : 'openid profile email';
+
+		// Prepare authorization parameters with scope.
+		$auth_params = array();
+		if ( ! empty( $oauth2_scope_setting ) ) {
+			$auth_params['scope'] = $oauth2_scope_setting;
+		}
+
+		// If we don't have an authorization code, then get one.
+		if ( ! isset( $_REQUEST['code'] ) ) {
+			$auth_url = $provider->getAuthorizationUrl(
+				/**
+				 * Filter the parameters passed to the generic oauth2 authorization endpoint.
+				 *
+				 * @param array() $params Array of key/value pairs where keys represent
+				 *                        a GET param and value is its value.
+				 */
+				apply_filters( 'authorizer_oauth2_generic_authorization_parameters', $auth_params )
+			);
+			$_SESSION['oauth2state'] = $provider->getState();
+			header( 'Location: ' . $auth_url );
+			exit;
+		} elseif ( empty( $_REQUEST['state'] ) || empty( $_SESSION['oauth2state'] ) || $_REQUEST['state'] !== $_SESSION['oauth2state'] ) {
+			// Check state against previously stored one to mitigate CSRF attacks.
+			unset( $_SESSION['oauth2state'] );
+			exit;
+		} else {
+			// Try to get an access token (using the authorization code grant).
+			try {
+				$token = $provider->getAccessToken( 'authorization_code', array(
+					'code' => $_REQUEST['code'],
+				) );
+
+				// Encrypt the token for secure storage.
+				$token_json_prepared = $token->jsonSerialize();
+				$token_json = json_encode( $token_json_prepared );
+				$save_secure = new Save_Secure();
+				$encrypted_token = $save_secure->encrypt( $token_json );
+			} catch ( \Exception $e ) {
+				// Failed to get token; try again from the beginning.
 				$auth_url = $provider->getAuthorizationUrl(
 					/**
 					 * Filter the parameters passed to the generic oauth2 authorization endpoint.
@@ -790,32 +860,8 @@ class Authentication extends Singleton {
 					 * @param array() $params Array of key/value pairs where keys represent
 					 *                        a GET param and value is its value.
 					 */
-					apply_filters( 'authorizer_oauth2_generic_authorization_parameters', array() )
+					apply_filters( 'authorizer_oauth2_generic_authorization_parameters', $auth_params )
 				);
-				$_SESSION['oauth2state'] = $provider->getState();
-				header( 'Location: ' . $auth_url );
-				exit;
-			} elseif ( empty( $_REQUEST['state'] ) || empty( $_SESSION['oauth2state'] ) || $_REQUEST['state'] !== $_SESSION['oauth2state'] ) {
-				// Check state against previously stored one to mitigate CSRF attacks.
-				unset( $_SESSION['oauth2state'] );
-				exit;
-			} else {
-				// Try to get an access token (using the authorization code grant).
-				try {
-					$token = $provider->getAccessToken( 'authorization_code', array(
-						'code' => $_REQUEST['code'],
-					) );
-				} catch ( \Exception $e ) {
-					// Failed to get token; try again from the beginning.
-					$auth_url = $provider->getAuthorizationUrl(
-						/**
-						 * Filter the parameters passed to the generic oauth2 authorization endpoint.
-						 *
-						 * @param array() $params Array of key/value pairs where keys represent
-						 *                        a GET param and value is its value.
-						 */
-						apply_filters( 'authorizer_oauth2_generic_authorization_parameters', array() )
-					);
 					$_SESSION['oauth2state'] = $provider->getState();
 
 					// Log the error for debugging.
